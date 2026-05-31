@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[oc]
+*.egg-info/
+build/
+dist/
+wheels/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Dashboard
+dashboard/node_modules/
+dashboard/.next/
+dashboard/.env.local
+dashboard/*.tsbuildinfo
+
+# Local tool state
+.commandcode/
+.terminus-cli/
