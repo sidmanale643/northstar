@@ -1,324 +1,220 @@
-'use client';
+'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  AlertCircle,
-  ArrowLeft,
-  ChevronDown,
-  ChevronRight,
-  ChevronUp,
-  Code,
-  Database,
-  Eye,
-  FileJson,
-  Info,
-  Loader2,
-  Plus,
-  RotateCcw,
-  Save,
-  Trash2,
-  X,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useActiveProject } from '@/components/project-provider';
-import type { EvalDatasetSummary, EvalRunSummary } from '@/lib/supabase/types';
-
-interface DatasetRow {
-  id: string;
-  input: string;
-  messages: string;
-  expected: string;
-  metrics: string;
-  metadata: string;
-}
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertCircle, ArrowLeft, Code, Database, FileJson, Loader2 } from 'lucide-react'
+import Link from 'next/link'
+import { DatasetRowDrawer } from '@/components/dataset/dataset-row-drawer'
+import { DatasetTable } from '@/components/dataset/dataset-table'
+import { DatasetToolbar } from '@/components/dataset/dataset-toolbar'
+import { deriveColumns } from '@/components/dataset/dataset-columns'
+import { useActiveProject } from '@/components/project-provider'
+import type { FreeFormRow } from '@/lib/eval-datasets'
+import type { EvalDatasetSummary, EvalRunSummary } from '@/lib/supabase/types'
 
 interface DatasetDetailResponse {
-  dataset: EvalDatasetSummary;
-  rows: DatasetRow[];
-  runs: EvalRunSummary[];
+  dataset: EvalDatasetSummary
+  rows: FreeFormRow[]
+  runs: EvalRunSummary[]
 }
 
 interface DatasetUpdateResponse {
-  dataset: EvalDatasetSummary;
-  rows: DatasetRow[];
+  dataset: EvalDatasetSummary
+  rows: FreeFormRow[]
 }
 
-interface FieldError {
-  rowIndex: number;
-  field: string;
-  message: string;
-}
+export default function DatasetDetailPage({ params }: { params: { datasetId: string } }) {
+  const project = useActiveProject()
+  const [dataset, setDataset] = useState<EvalDatasetSummary | null>(null)
+  const [rows, setRows] = useState<FreeFormRow[]>([])
+  const [savedRows, setSavedRows] = useState<FreeFormRow[]>([])
+  const [runs, setRuns] = useState<EvalRunSummary[]>([])
+  const [pageError, setPageError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showRaw, setShowRaw] = useState(false)
+  const [rawContent, setRawContent] = useState<string | null>(null)
+  const [isLoadingRaw, setIsLoadingRaw] = useState(false)
+  const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
 
-interface ParsedMessage {
-  role: string;
-  content: string;
-}
-
-const MESSAGE_ROLES = ['system', 'user', 'assistant', 'tool'] as const;
-
-const emptyRow: DatasetRow = {
-  id: '',
-  input: '',
-  messages: '[]',
-  expected: '{}',
-  metrics: '{}',
-  metadata: '{}',
-};
-
-export default function DatasetDetailPage({
-  params,
-}: {
-  params: { datasetId: string };
-}) {
-  const project = useActiveProject();
-  const [dataset, setDataset] = useState<EvalDatasetSummary | null>(null);
-  const [rows, setRows] = useState<DatasetRow[]>([]);
-  const [savedRows, setSavedRows] = useState<DatasetRow[]>([]);
-  const [runs, setRuns] = useState<EvalRunSummary[]>([]);
-  const [pageError, setPageError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(false);
-  const [showRaw, setShowRaw] = useState(false);
-  const [rawContent, setRawContent] = useState<string | null>(null);
-  const [isLoadingRaw, setIsLoadingRaw] = useState(false);
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
-  const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
-  const editorRef = useRef<HTMLDivElement>(null);
-
-  // Load dataset
   useEffect(() => {
-    let isCurrent = true;
+    let isCurrent = true
 
     async function loadDataset() {
-      setIsLoading(true);
-      setPageError(null);
+      setIsLoading(true)
+      setPageError(null)
 
       try {
-        const response = await fetch(
-          `/api/projects/${project.id}/eval-datasets/${params.datasetId}`,
-          { cache: 'no-store' }
-        );
-        const body: unknown = await response.json().catch(() => null);
+        const response = await fetch(`/api/projects/${project.id}/eval-datasets/${params.datasetId}`, {
+          cache: 'no-store',
+        })
+        const body: unknown = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(readApiError(body))
 
-        if (!response.ok) throw new Error(readApiError(body));
-
-        const parsed = parseDatasetDetailResponse(body);
-        if (!parsed) throw new Error('The server returned an invalid dataset response.');
+        const parsed = parseDatasetDetailResponse(body)
+        if (!parsed) throw new Error('The server returned an invalid dataset response.')
 
         if (isCurrent) {
-          setDataset(parsed.dataset);
-          setRows(parsed.rows);
-          setSavedRows(parsed.rows);
-          setRuns(parsed.runs);
-          // Expand first row by default if there are rows
-          if (parsed.rows.length > 0) {
-            setExpandedRows(new Set([0]));
-          }
+          setDataset(parsed.dataset)
+          setRows(parsed.rows)
+          setSavedRows(parsed.rows)
+          setRuns(parsed.runs)
+          setSelectedRowIndex(null)
         }
       } catch (error) {
         if (isCurrent) {
-          setDataset(null);
-          setRows([]);
-          setSavedRows([]);
-          setRuns([]);
-          setPageError(error instanceof Error ? error.message : 'Unable to load dataset.');
+          setDataset(null)
+          setRows([])
+          setSavedRows([])
+          setRuns([])
+          setPageError(error instanceof Error ? error.message : 'Unable to load dataset.')
         }
       } finally {
-        if (isCurrent) setIsLoading(false);
+        if (isCurrent) setIsLoading(false)
       }
     }
 
-    void loadDataset();
+    void loadDataset()
 
     return () => {
-      isCurrent = false;
-    };
-  }, [params.datasetId, project.id]);
+      isCurrent = false
+    }
+  }, [params.datasetId, project.id])
 
-  // Load raw content when toggle is enabled
   useEffect(() => {
     if (!showRaw) {
-      setRawContent(null);
-      return;
+      setRawContent(null)
+      return
     }
 
-    let isCurrent = true;
+    let isCurrent = true
 
-    async function fetchRaw() {
-      setIsLoadingRaw(true);
+    async function loadRaw() {
+      setIsLoadingRaw(true)
+      setPageError(null)
+
       try {
-        const response = await fetch(
-          `/api/projects/${project.id}/eval-datasets/${params.datasetId}?raw=true`,
-          { cache: 'no-store' }
-        );
-        if (!response.ok) throw new Error('Failed to load raw dataset.');
-        const text = await response.text();
-        if (isCurrent) setRawContent(text);
+        const response = await fetch(`/api/projects/${project.id}/eval-datasets/${params.datasetId}?raw=true`, {
+          cache: 'no-store',
+        })
+        if (!response.ok) throw new Error('Failed to load raw dataset.')
+        const text = await response.text()
+        if (isCurrent) setRawContent(text)
       } catch (error) {
         if (isCurrent) {
-          setRawContent(null);
-          setPageError(error instanceof Error ? error.message : 'Unable to load raw dataset.');
+          setRawContent(null)
+          setPageError(error instanceof Error ? error.message : 'Unable to load raw dataset.')
         }
       } finally {
-        if (isCurrent) setIsLoadingRaw(false);
+        if (isCurrent) setIsLoadingRaw(false)
       }
     }
 
-    void fetchRaw();
+    void loadRaw()
 
     return () => {
-      isCurrent = false;
-    };
-  }, [showRaw, params.datasetId, project.id]);
-  useEffect(() => {
-    const newDirtyFields = new Set<string>();
-    rows.forEach((row, index) => {
-      const savedRow = savedRows[index];
-      if (!savedRow) return;
-      (Object.keys(row) as Array<keyof DatasetRow>).forEach((key) => {
-        if (row[key] !== savedRow[key]) {
-          newDirtyFields.add(`${index}-${key}`);
-        }
-      });
-    });
-    setDirtyFields(newDirtyFields);
-  }, [rows, savedRows]);
+      isCurrent = false
+    }
+  }, [showRaw, params.datasetId, project.id])
 
-  // Validate rows and set field errors
-  useEffect(() => {
-    const errors: FieldError[] = [];
-    rows.forEach((row, index) => {
-      validateRow(row, index, errors);
-    });
-    setFieldErrors(errors);
-  }, [rows]);
+  const columns = useMemo(() => deriveColumns(rows), [rows])
+  const rowErrors = useMemo(() => validateRows(rows), [rows])
+  const dirtyRows = useMemo(() => {
+    const dirty = new Set<number>()
+    const length = Math.max(rows.length, savedRows.length)
+    for (let index = 0; index < length; index += 1) {
+      if (!rowsEqual(rows[index], savedRows[index])) dirty.add(index)
+    }
+    return dirty
+  }, [rows, savedRows])
 
-  const isDirty = dirtyFields.size > 0;
-  const unsavedCount = useMemo(() => {
-    const rowIndices = new Set<number>();
-    dirtyFields.forEach((key) => {
-      const [rowIndex] = key.split('-');
-      rowIndices.add(parseInt(rowIndex, 10));
-    });
-    return rowIndices.size;
-  }, [dirtyFields]);
+  const selectedRow = selectedRowIndex === null ? null : rows[selectedRowIndex] ?? null
+  const errorCount = rowErrors.size
 
-  // Define callbacks before useEffect that uses them
   const handleRevert = useCallback(() => {
-    setRows(savedRows);
-    setPageError(null);
-  }, [savedRows]);
+    setRows(savedRows)
+    setSelectedRowIndex(null)
+    setPageError(null)
+  }, [savedRows])
 
-  const handleSaveCallback = useCallback(async () => {
-    if (fieldErrors.length > 0) {
-      setPageError('Please fix validation errors before saving.');
-      return;
+  const handleSave = useCallback(async () => {
+    if (rowErrors.size > 0) {
+      setPageError('Fix row errors before saving.')
+      return
     }
 
-    setIsSaving(true);
-    setPageError(null);
+    setIsSaving(true)
+    setPageError(null)
 
     try {
       const response = await fetch(`/api/projects/${project.id}/eval-datasets/${params.datasetId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rows }),
-      });
-      const body: unknown = await response.json().catch(() => null);
+      })
+      const body: unknown = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(readApiError(body))
 
-      if (!response.ok) throw new Error(readApiError(body));
+      const parsed = parseDatasetUpdateResponse(body)
+      if (!parsed) throw new Error('The server returned an invalid dataset update.')
 
-      const parsed = parseDatasetUpdateResponse(body);
-      if (!parsed) throw new Error('The server returned an invalid dataset update.');
-
-      setDataset(parsed.dataset);
-      setRows(parsed.rows);
-      setSavedRows(parsed.rows);
+      setDataset(parsed.dataset)
+      setRows(parsed.rows)
+      setSavedRows(parsed.rows)
+      setRawContent(null)
+      setShowRaw(false)
     } catch (error) {
-      setPageError(error instanceof Error ? error.message : 'Unable to save dataset.');
+      setPageError(error instanceof Error ? error.message : 'Unable to save dataset.')
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  }, [fieldErrors.length, project.id, params.datasetId, rows]);
+  }, [params.datasetId, project.id, rowErrors.size, rows])
 
-  // Keyboard shortcuts - must come after callback definitions
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Only trigger when focused in the editor area
-      if (!editorRef.current?.contains(document.activeElement)) return;
-
-      if ((event.metaKey || event.ctrlKey) && event.key === 's') {
-        event.preventDefault();
-        if (isDirty && !isSaving && !isLoading) {
-          void handleSaveCallback();
-        }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault()
+        if (dirtyRows.size > 0 && rowErrors.size === 0 && !isSaving) void handleSave()
       }
-
-      if ((event.metaKey || event.ctrlKey) && event.key === 'z') {
-        event.preventDefault();
-        if (isDirty && !isSaving) {
-          handleRevert();
-        }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        if (dirtyRows.size > 0 && !isSaving) handleRevert()
       }
-    };
+    }
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isDirty, isSaving, isLoading, handleRevert, handleSaveCallback]);
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [dirtyRows.size, handleRevert, handleSave, isSaving, rowErrors.size])
 
-  const updateCell = (rowIndex: number, key: keyof DatasetRow, value: string) => {
+  const updateCell = (rowIndex: number, key: string, value: string) => {
     setRows((current) =>
-      current.map((row, index) => (index === rowIndex ? { ...row, [key]: value } : row))
-    );
-  };
+      current.map((row, index) => (index === rowIndex ? { ...row, [key]: parseScalar(value) } : row))
+    )
+  }
 
-  const toggleRowExpanded = (rowIndex: number) => {
-    setExpandedRows((current) => {
-      const next = new Set(current);
-      if (next.has(rowIndex)) {
-        next.delete(rowIndex);
-      } else {
-        next.add(rowIndex);
-      }
-      return next;
-    });
-  };
-
-  const deleteRow = (rowIndex: number) => {
-    setRows((current) => current.filter((_, index) => index !== rowIndex));
-    setExpandedRows((current) => {
-      const next = new Set<number>();
-      current.forEach((i) => {
-        if (i < rowIndex) next.add(i);
-        if (i > rowIndex) next.add(i - 1);
-      });
-      return next;
-    });
-  };
+  const updateRow = (rowIndex: number, nextRow: FreeFormRow) => {
+    setRows((current) => current.map((row, index) => (index === rowIndex ? nextRow : row)))
+  }
 
   const addRow = () => {
-    setRows((current) => [...current, { ...emptyRow }]);
-    setExpandedRows((current) => {
-      const next = new Set<number>(current);
-      next.add(rows.length);
-      return next;
-    });
-  };
+    const nextRow: FreeFormRow = { id: newRowId() }
+    setRows((current) => [...current, nextRow])
+    setSelectedRowIndex(rows.length)
+  }
 
-  const getFieldError = (rowIndex: number, field: string): string | null => {
-    const error = fieldErrors.find((e) => e.rowIndex === rowIndex && e.field === field);
-    return error?.message ?? null;
-  };
-
-  const isFieldDirty = (rowIndex: number, field: string): boolean => {
-    return dirtyFields.has(`${rowIndex}-${field}`);
-  };
+  const deleteRow = (rowIndex: number) => {
+    setRows((current) => current.filter((_, index) => index !== rowIndex))
+    setSelectedRowIndex((current) => {
+      if (current === null) return null
+      if (current === rowIndex) return null
+      if (current > rowIndex) return current - 1
+      return current
+    })
+  }
 
   return (
     <div className="ns-enter flex min-h-[740px] flex-col overflow-hidden rounded-lg border bg-background">
-      {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
         <div className="min-w-0 flex-1">
           <Link
@@ -337,64 +233,16 @@ export default function DatasetDetailPage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Info toggle */}
-          <button
-            type="button"
-            onClick={() => setShowSidebar(!showSidebar)}
-            className={`ns-button h-9 ${showSidebar ? 'bg-secondary' : ''}`}
-            title="Toggle dataset info"
-          >
-            <Info className="h-4 w-4" />
-            <span className="hidden sm:inline">Info</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowRaw(!showRaw)}
-            className={`ns-button h-9 ${showRaw ? 'bg-secondary' : ''}`}
-            title="View raw file content"
-          >
-            <Eye className="h-4 w-4" />
-            <span className="hidden sm:inline">Raw</span>
-          </button>
-
-          <Link
-            href={`/projects/${project.id}/evals/${params.datasetId}`}
-            className="ns-button h-9"
-          >
-            Run eval
-          </Link>
-
-          <button
-            type="button"
-            className="ns-button h-9"
-            onClick={handleRevert}
-            disabled={!isDirty || isSaving}
-          >
-            <RotateCcw className="h-4 w-4" />
-            <span className="hidden sm:inline">Revert</span>
-          </button>
-
-          <button
-            type="button"
-            className="ns-button ns-button-primary h-9"
-            onClick={() => void handleSaveCallback()}
-            disabled={!isDirty || isSaving || isLoading || fieldErrors.length > 0}
-          >
-            {isSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
-            {isSaving ? 'Saving...' : 'Save'}
-          </button>
+        <div className="grid grid-cols-2 gap-3 text-right sm:grid-cols-4">
+          <MetaItem label="Format" value={dataset?.fileFormat ?? '-'} />
+          <MetaItem label="Rows" value={dataset?.caseCount === null || dataset?.caseCount === undefined ? String(rows.length) : String(dataset.caseCount)} />
+          <MetaItem label="Size" value={dataset ? formatBytes(dataset.byteSize) : '-'} />
+          <MetaItem label="Runs" value={String(runs.length)} />
         </div>
       </div>
 
-      {/* Error banner */}
       {pageError && (
-        <div className="border-b border-[#F09595] bg-[#FCEBEB] px-6 py-2.5 text-sm text-[#791F1F]">
+        <div className="border-b border-red-200 bg-red-50 px-6 py-2.5 text-sm text-red-700">
           <span className="inline-flex items-center gap-1.5">
             <AlertCircle className="h-4 w-4" />
             {pageError}
@@ -402,560 +250,203 @@ export default function DatasetDetailPage({
         </div>
       )}
 
-      {/* Sticky toolbar */}
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-xs text-muted-foreground">
-            {rows.length} rows
-          </span>
-          {isDirty && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-              {unsavedCount} unsaved
-            </span>
-          )}
-          {fieldErrors.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-              <AlertCircle className="h-3 w-3" />
-              {fieldErrors.length} errors
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            className="ns-button ns-button-primary h-8"
-            onClick={addRow}
-          >
-            <Plus className="h-4 w-4" />
-            Add row
-          </button>
-        </div>
-      </div>
+      <DatasetToolbar
+        projectId={project.id}
+        datasetId={params.datasetId}
+        rowCount={rows.length}
+        dirtyCount={dirtyRows.size}
+        errorCount={errorCount}
+        searchQuery={searchQuery}
+        showRaw={showRaw}
+        isSaving={isSaving}
+        canSave={dirtyRows.size > 0 && errorCount === 0 && !isLoading}
+        onSearchChange={setSearchQuery}
+        onToggleRaw={() => setShowRaw((current) => !current)}
+        onAddRow={addRow}
+        onRevert={handleRevert}
+        onSave={() => void handleSave()}
+      />
 
-      {/* Raw content panel */}
       {showRaw && (
-        <div className="border-b border-border">
+        <div className="border-b border-border bg-white">
           {isLoadingRaw ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 py-14 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
               Loading raw content...
             </div>
           ) : rawContent !== null ? (
-            <pre className="max-h-[600px] overflow-auto p-6 font-mono text-xs leading-relaxed text-foreground whitespace-pre-wrap">
+            <pre className="max-h-[420px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-foreground">
               {rawContent}
             </pre>
           ) : null}
         </div>
       )}
 
-      {/* Main content */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {/* Editor */}
-        <main
-          ref={editorRef}
-          className={`min-h-0 flex-1 overflow-y-auto ${showSidebar ? 'border-r border-border' : ''}`}
-        >
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_280px]">
+        <main className="min-h-0 overflow-auto">
           {isLoading ? (
             <div className="flex min-h-[420px] items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
               Loading dataset...
             </div>
-          ) : rows.length === 0 ? (
-            <div className="flex min-h-[420px] flex-col items-center justify-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary">
-                <Database className="h-8 w-8 text-muted-foreground" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-foreground">No rows yet</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Add your first row to get started
-                </p>
-              </div>
-              <button
-                type="button"
-                className="ns-button ns-button-primary"
-                onClick={addRow}
-              >
-                <Plus className="h-4 w-4" />
-                Add first row
-              </button>
-            </div>
           ) : (
-            <div className="space-y-3 p-4">
-              {rows.map((row, rowIndex) => {
-                const isExpanded = expandedRows.has(rowIndex);
-                const idError = getFieldError(rowIndex, 'id');
-                const messagesError = getFieldError(rowIndex, 'messages');
-                const expectedError = getFieldError(rowIndex, 'expected');
-                const metricsError = getFieldError(rowIndex, 'metrics');
-                const metadataError = getFieldError(rowIndex, 'metadata');
-                const hasErrors = idError || messagesError || expectedError || metricsError || metadataError;
-                const isRowDirty =
-                  isFieldDirty(rowIndex, 'id') ||
-                  isFieldDirty(rowIndex, 'input') ||
-                  isFieldDirty(rowIndex, 'messages') ||
-                  isFieldDirty(rowIndex, 'expected') ||
-                  isFieldDirty(rowIndex, 'metrics') ||
-                  isFieldDirty(rowIndex, 'metadata');
-
-                return (
-                  <div
-                    key={rowIndex}
-                    className={`overflow-hidden rounded-lg border bg-white transition-all ${
-                      isRowDirty ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent'
-                    } ${hasErrors ? 'border-red-200' : ''}`}
-                  >
-                    {/* Card header */}
-                    <div className="flex items-center justify-between border-b border-border bg-secondary/30 px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => toggleRowExpanded(rowIndex)}
-                        className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-[#0E7C5C]"
-                      >
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                        <span className="font-mono text-xs text-muted-foreground">#{rowIndex + 1}</span>
-                        <span className="truncate max-w-[200px] sm:max-w-[300px]">
-                          {row.id || 'Untitled row'}
-                        </span>
-                        {hasErrors && (
-                          <AlertCircle className="h-4 w-4 text-red-500" />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteRow(rowIndex)}
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
-                        title="Delete row"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-
-                    {/* Card body */}
-                    {isExpanded && (
-                      <div className="space-y-4 p-4">
-                        {/* ID field */}
-                        <div className="space-y-1.5">
-                          <label className="ns-label">ID</label>
-                          <input
-                            type="text"
-                            value={row.id}
-                            onChange={(e) => updateCell(rowIndex, 'id', e.target.value)}
-                            className={`ns-input h-9 ${
-                              idError ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : ''
-                            } ${isFieldDirty(rowIndex, 'id') ? 'bg-amber-50/50' : ''}`}
-                            placeholder="Row identifier"
-                          />
-                          {idError && (
-                            <p className="text-xs text-red-600">{idError}</p>
-                          )}
-                        </div>
-
-                        {/* Input field */}
-                        <div className="space-y-1.5">
-                          <label className="ns-label">Input</label>
-                          <input
-                            type="text"
-                            value={row.input}
-                            onChange={(e) => updateCell(rowIndex, 'input', e.target.value)}
-                            className={`ns-input h-9 ${
-                              isFieldDirty(rowIndex, 'input') ? 'bg-amber-50/50' : ''
-                            }`}
-                            placeholder="Input text"
-                          />
-                        </div>
-
-                        {/* JSON fields */}
-                        <MessagesEditor
-                          value={row.messages}
-                          onChange={(value) => updateCell(rowIndex, 'messages', value)}
-                          error={messagesError}
-                          isDirty={isFieldDirty(rowIndex, 'messages')}
-                        />
-
-                        <JsonField
-                          label="Expected"
-                          value={row.expected}
-                          onChange={(value) => updateCell(rowIndex, 'expected', value)}
-                          error={expectedError}
-                          isDirty={isFieldDirty(rowIndex, 'expected')}
-                          placeholder="{}"
-                        />
-
-                        <JsonField
-                          label="Metrics"
-                          value={row.metrics}
-                          onChange={(value) => updateCell(rowIndex, 'metrics', value)}
-                          error={metricsError}
-                          isDirty={isFieldDirty(rowIndex, 'metrics')}
-                          placeholder="{}"
-                        />
-
-                        <JsonField
-                          label="Metadata"
-                          value={row.metadata}
-                          onChange={(value) => updateCell(rowIndex, 'metadata', value)}
-                          error={metadataError}
-                          isDirty={isFieldDirty(rowIndex, 'metadata')}
-                          placeholder="{}"
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <DatasetTable
+              rows={rows}
+              columns={columns}
+              searchQuery={searchQuery}
+              dirtyRows={dirtyRows}
+              rowErrors={rowErrors}
+              onAddRow={addRow}
+              onOpenRow={setSelectedRowIndex}
+              onDeleteRow={deleteRow}
+              onCellChange={updateCell}
+            />
           )}
         </main>
 
-        {/* Collapsible sidebar */}
-        {showSidebar && (
-          <aside className="w-80 min-w-0 overflow-y-auto bg-secondary/30 px-4 py-4">
-            <div className="space-y-4">
-              {/* Dataset info */}
-              <div className="rounded-lg border bg-white p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Database className="h-4 w-4 text-[#1D9E75]" />
-                  Dataset Info
-                </div>
-                <div className="space-y-3">
-                  <MetaItem label="Format" value={dataset?.fileFormat ?? '-'} />
-                  <MetaItem label="Cases" value={dataset?.caseCount === null || dataset?.caseCount === undefined ? 'unknown' : String(dataset.caseCount)} />
-                  <MetaItem label="Size" value={dataset ? formatBytes(dataset.byteSize) : '-'} />
-                  <MetaItem label="Created" value={dataset ? formatDate(dataset.createdAt) : '-'} />
-                </div>
+        <aside className="hidden min-h-0 overflow-y-auto border-l border-border bg-secondary/30 p-4 xl:block">
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-white p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+                <Database className="h-4 w-4 text-[#1D9E75]" />
+                Dataset
               </div>
-
-              {/* Run history */}
-              <div className="rounded-lg border bg-white p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
-                  <Code className="h-4 w-4 text-[#1D9E75]" />
-                  Run History
-                </div>
-                {runs.length > 0 ? (
-                  <div className="space-y-2">
-                    {runs.map((run) => (
-                      <Link
-                        key={run.id}
-                        href={`/projects/${project.id}/evals/${params.datasetId}`}
-                        className="block rounded-md border border-border bg-secondary/50 px-3 py-2 transition-colors hover:bg-secondary"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs text-foreground">{run.status}</span>
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            {formatDate(run.createdAt)}
-                          </span>
-                        </div>
-                        <div className="mt-1 font-mono text-[10px] text-muted-foreground">
-                          {run.passedCases}/{run.evaluatedCases} passed
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-4 text-center text-xs text-muted-foreground">
-                    No eval runs yet
-                  </div>
-                )}
-              </div>
-
-              {/* Keyboard shortcuts */}
-              <div className="rounded-lg border bg-white p-4">
-                <div className="mb-3 text-sm font-medium text-foreground">Keyboard Shortcuts</div>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <div className="flex items-center justify-between">
-                    <span>Save</span>
-                    <kbd className="rounded border bg-secondary px-1.5 py-0.5 font-mono">⌘S</kbd>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Revert</span>
-                    <kbd className="rounded border bg-secondary px-1.5 py-0.5 font-mono">⌘Z</kbd>
-                  </div>
-                </div>
+              <div className="space-y-3">
+                <MetaItem label="Created" value={dataset ? formatDate(dataset.createdAt) : '-'} />
+                <MetaItem label="Columns" value={String(columns.length)} />
+                <MetaItem label="Changed" value={String(dirtyRows.size)} />
               </div>
             </div>
-          </aside>
-        )}
+
+            <div className="rounded-lg border bg-white p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+                <Code className="h-4 w-4 text-[#1D9E75]" />
+                Runs
+              </div>
+              {runs.length > 0 ? (
+                <div className="space-y-2">
+                  {runs.slice(0, 6).map((run) => (
+                    <Link
+                      key={run.id}
+                      href={`/projects/${project.id}/evals/${params.datasetId}`}
+                      className="block rounded-md border border-border bg-secondary/50 px-3 py-2 transition-colors hover:bg-secondary"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-mono text-xs text-foreground">{run.status}</span>
+                        <span className="font-mono text-[10px] text-muted-foreground">{formatDate(run.createdAt)}</span>
+                      </div>
+                      <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                        {run.passedCases}/{run.evaluatedCases} passed
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-4 text-center text-xs text-muted-foreground">No eval runs yet</div>
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
+
+      <DatasetRowDrawer
+        row={selectedRow}
+        rowIndex={selectedRowIndex}
+        columns={columns}
+        error={selectedRowIndex === null ? null : rowErrors.get(selectedRowIndex) ?? null}
+        onClose={() => setSelectedRowIndex(null)}
+        onChange={updateRow}
+      />
     </div>
-  );
+  )
 }
 
-function JsonField({
-  label,
-  value,
-  onChange,
-  error,
-  isDirty,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  error: string | null;
-  isDirty: boolean;
-  placeholder: string;
-}) {
-  const [isExpanded, setIsExpanded] = useState(true);
+function validateRows(rows: FreeFormRow[]) {
+  const errors = new Map<number, string>()
+  const seen = new Map<string, number>()
 
-  return (
-    <div className="space-y-1.5">
-      <button
-        type="button"
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-      >
-        {isExpanded ? (
-          <ChevronUp className="h-3.5 w-3.5" />
-        ) : (
-          <ChevronDown className="h-3.5 w-3.5" />
-        )}
-        {label}
-        <Code className="h-3 w-3" />
-      </button>
-      {isExpanded && (
-        <>
-          <textarea
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            rows={4}
-            className={`ns-input min-h-[80px] resize-y font-mono text-xs leading-relaxed ${
-              error ? 'border-red-300 focus:border-red-400 focus:ring-red-100' : ''
-            } ${isDirty ? 'bg-amber-50/50' : ''}`}
-          />
-          {error && <p className="text-xs text-red-600">{error}</p>}
-        </>
-      )}
-    </div>
-  );
-}
-
-function MessagesEditor({
-  value,
-  onChange,
-  error,
-  isDirty,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  error: string | null;
-  isDirty: boolean;
-}) {
-  const [isExpanded, setIsExpanded] = useState(true);
-  const [messages, setMessages] = useState<ParsedMessage[]>([]);
-  const [parseError, setParseError] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const parsed = JSON.parse(value);
-      if (!Array.isArray(parsed) || !parsed.every(isParsedMessage)) {
-        setParseError('Messages must be an array of {role, content} objects.');
-        setMessages([]);
-        return;
-      }
-      setParseError(null);
-      setMessages(parsed);
-    } catch {
-      setParseError('Invalid JSON.');
-      setMessages([]);
+  rows.forEach((row, index) => {
+    const id = row.id.trim()
+    if (!id) {
+      errors.set(index, 'id is required.')
+      return
     }
-  }, [value]);
+    const existing = seen.get(id)
+    if (existing !== undefined) {
+      errors.set(index, `duplicate id "${id}" also appears on row ${existing + 1}.`)
+      return
+    }
+    seen.set(id, index)
+  })
 
-  const updateMessage = (index: number, field: keyof ParsedMessage, newValue: string) => {
-    const updated = messages.map((msg, i) =>
-      i === index ? { ...msg, [field]: newValue } : msg
-    );
-    setMessages(updated);
-    onChange(JSON.stringify(updated, null, 2));
-  };
+  return errors
+}
 
-  const addMessage = () => {
-    const updated = [...messages, { role: 'user', content: '' }];
-    setMessages(updated);
-    onChange(JSON.stringify(updated, null, 2));
-  };
+function rowsEqual(left: FreeFormRow | undefined, right: FreeFormRow | undefined) {
+  if (!left || !right) return left === right
+  return JSON.stringify(left) === JSON.stringify(right)
+}
 
-  const deleteMessage = (index: number) => {
-    const updated = messages.filter((_, i) => i !== index);
-    setMessages(updated);
-    onChange(JSON.stringify(updated, null, 2));
-  };
+function parseScalar(value: string): unknown {
+  const trimmed = value.trim()
+  if (trimmed === '') return ''
+  if (trimmed === 'true') return true
+  if (trimmed === 'false') return false
+  if (trimmed === 'null') return null
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed)
+  return value
+}
 
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-        >
-          {isExpanded ? (
-            <ChevronUp className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5" />
-          )}
-          Messages
-          <Code className="h-3 w-3" />
-        </button>
-      </div>
-      {isExpanded && (
-        <div className="space-y-2">
-          {parseError && (
-            <p className="text-xs text-red-600">{parseError}</p>
-          )}
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          {messages.length > 0 ? (
-            <div className="space-y-2">
-              {messages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={`rounded-md border p-3 ${isDirty ? 'bg-amber-50/50' : ''}`}
-                >
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="font-mono text-[11px] text-muted-foreground">
-                      Message {index + 1}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => deleteMessage(index)}
-                      className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-red-50 hover:text-red-600"
-                      title="Delete message"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                  <div className="mb-2">
-                    <select
-                      value={msg.role}
-                      onChange={(e) => updateMessage(index, 'role', e.target.value)}
-                      className="ns-input h-8 font-mono text-xs"
-                    >
-                      {MESSAGE_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {role}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <textarea
-                    value={msg.content}
-                    onChange={(e) => updateMessage(index, 'content', e.target.value)}
-                    placeholder="Message content..."
-                    rows={3}
-                    className="ns-input min-h-[60px] resize-y font-mono text-xs leading-relaxed"
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            !parseError && (
-              <p className="py-2 text-center text-xs text-muted-foreground">
-                No messages yet
-              </p>
-            )
-          )}
-          <button
-            type="button"
-            onClick={addMessage}
-            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="h-3 w-3" />
-            Add message
-          </button>
-        </div>
-      )}
-    </div>
-  );
+function newRowId() {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `row-${Date.now()}`
 }
 
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
-      <span className="truncate font-mono text-xs text-foreground" title={value}>
+    <div className="min-w-0">
+      <div className="ns-label">{label}</div>
+      <div className="mt-1 truncate font-mono text-xs text-foreground" title={value}>
         {value}
-      </span>
+      </div>
     </div>
-  );
-}
-
-function validateRow(row: DatasetRow, rowIndex: number, errors: FieldError[]) {
-  if (!row.id.trim()) {
-    errors.push({ rowIndex, field: 'id', message: 'ID is required' });
-  }
-  validateJsonField(row.messages, rowIndex, 'messages', errors, true);
-  validateJsonField(row.expected, rowIndex, 'expected', errors, false);
-  validateJsonField(row.metrics, rowIndex, 'metrics', errors, false);
-  validateJsonField(row.metadata, rowIndex, 'metadata', errors, false);
-}
-
-function validateJsonField(
-  value: string,
-  rowIndex: number,
-  field: string,
-  errors: FieldError[],
-  required: boolean
-) {
-  if (!value.trim()) {
-    if (required) {
-      errors.push({ rowIndex, field, message: `${field} is required` });
-    }
-    return;
-  }
-
-  try {
-    JSON.parse(value);
-  } catch (e) {
-    errors.push({
-      rowIndex,
-      field,
-      message: `Invalid JSON: ${e instanceof SyntaxError ? e.message : 'parse failed'}`,
-    });
-  }
+  )
 }
 
 function formatBytes(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
   return new Intl.DateTimeFormat('en', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(date);
+  }).format(date)
 }
 
 function parseDatasetDetailResponse(value: unknown): DatasetDetailResponse | null {
-  if (!isRecord(value) || !Array.isArray(value.rows) || !Array.isArray(value.runs)) return null;
-  const dataset = parseEvalDatasetSummary(value.dataset);
-  if (!dataset || !value.rows.every(isDatasetRow)) return null;
+  if (!isRecord(value) || !Array.isArray(value.rows) || !Array.isArray(value.runs)) return null
+  const dataset = parseEvalDatasetSummary(value.dataset)
+  if (!dataset || !value.rows.every(isFreeFormRow)) return null
 
   return {
     dataset,
     rows: value.rows,
     runs: value.runs.filter(isEvalRunSummary),
-  };
+  }
 }
 
 function parseDatasetUpdateResponse(value: unknown): DatasetUpdateResponse | null {
-  if (!isRecord(value) || !Array.isArray(value.rows)) return null;
-  const dataset = parseEvalDatasetSummary(value.dataset);
-  if (!dataset || !value.rows.every(isDatasetRow)) return null;
-  return { dataset, rows: value.rows };
+  if (!isRecord(value) || !Array.isArray(value.rows)) return null
+  const dataset = parseEvalDatasetSummary(value.dataset)
+  if (!dataset || !value.rows.every(isFreeFormRow)) return null
+  return { dataset, rows: value.rows }
 }
 
 function parseEvalDatasetSummary(value: unknown): EvalDatasetSummary | null {
@@ -969,7 +460,7 @@ function parseEvalDatasetSummary(value: unknown): EvalDatasetSummary | null {
     (value.caseCount !== null && typeof value.caseCount !== 'number') ||
     typeof value.createdAt !== 'string'
   ) {
-    return null;
+    return null
   }
 
   return {
@@ -980,19 +471,11 @@ function parseEvalDatasetSummary(value: unknown): EvalDatasetSummary | null {
     byteSize: value.byteSize,
     caseCount: value.caseCount,
     createdAt: value.createdAt,
-  };
+  }
 }
 
-function isDatasetRow(value: unknown): value is DatasetRow {
-  return (
-    isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.input === 'string' &&
-    typeof value.messages === 'string' &&
-    typeof value.expected === 'string' &&
-    typeof value.metrics === 'string' &&
-    typeof value.metadata === 'string'
-  );
+function isFreeFormRow(value: unknown): value is FreeFormRow {
+  return isRecord(value) && typeof value.id === 'string'
 }
 
 function isEvalRunSummary(value: unknown): value is EvalRunSummary {
@@ -1005,25 +488,14 @@ function isEvalRunSummary(value: unknown): value is EvalRunSummary {
     typeof value.evaluatedCases === 'number' &&
     typeof value.passedCases === 'number' &&
     typeof value.createdAt === 'string'
-  );
+  )
 }
 
 function readApiError(value: unknown) {
-  if (isRecord(value) && typeof value.error === 'string') return value.error;
-  return 'Unexpected server response.';
+  if (isRecord(value) && typeof value.error === 'string') return value.error
+  return 'Unexpected server response.'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
-}
-
-function isParsedMessage(value: unknown): value is ParsedMessage {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'role' in value &&
-    'content' in value &&
-    typeof (value as ParsedMessage).role === 'string' &&
-    typeof (value as ParsedMessage).content === 'string'
-  );
+  return typeof value === 'object' && value !== null
 }

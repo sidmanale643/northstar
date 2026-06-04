@@ -1,4 +1,4 @@
-import { Activity, DollarSign, Layers3, Radio, Wrench } from 'lucide-react'
+import { Activity, DollarSign, Layers3, Wrench } from 'lucide-react'
 import { ProjectDashboardHeading } from '@/components/project-dashboard-heading'
 import { RecentTraceTimeline } from '@/components/recent-trace-timeline'
 import { CostStat, type CostBreakdownEntry } from '@/components/cost-stat'
@@ -48,7 +48,7 @@ export default async function DashboardPage({ params }: { params: { projectId: s
   const breakdown = buildCostBreakdown(costSummary)
 
   return (
-    <div className="ns-enter space-y-5">
+    <div className="ns-enter p-6 space-y-6 max-w-6xl mx-auto w-full">
       <ProjectDashboardHeading />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -64,7 +64,6 @@ export default async function DashboardPage({ params }: { params: { projectId: s
           breakdown={breakdown}
           icon={DollarSign}
         />
-        <Stat label="Pipeline" value="ready" detail="project configured" icon={Radio} tone="ok" />
       </div>
 
       <section>
@@ -91,7 +90,7 @@ function Stat({
   tone?: 'default' | 'ok'
 }) {
   return (
-    <div className="rounded-[10px] border bg-white px-4 py-3.5">
+    <div className="rounded-xl border border-border/60 bg-card p-5 pb-3 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="ns-label">{label}</div>
         <Icon className={`h-3.5 w-3.5 ${tone === 'ok' ? 'text-primary' : 'text-muted-foreground'}`} />

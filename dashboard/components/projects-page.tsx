@@ -49,7 +49,7 @@ export function ProjectsPage() {
 
   return (
     <>
-      <div className="ns-enter space-y-5">
+      <div className="ns-enter p-6 space-y-6 max-w-5xl mx-auto w-full">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="ns-label">Workspace / projects</div>
@@ -58,7 +58,6 @@ export function ProjectsPage() {
               Open a project to inspect its sessions, traces, and ingestion settings.
             </p>
           </div>
-          <span className="ns-pill">browser-local prototype</span>
         </div>
 
         <section>

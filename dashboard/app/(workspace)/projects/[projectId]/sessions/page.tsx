@@ -23,7 +23,7 @@ export default async function SessionsPage({ params }: { params: { projectId: st
   const stats = computeStats(sessions)
 
   return (
-    <div className="ns-enter space-y-5">
+    <div className="ns-enter p-6 space-y-6 max-w-6xl mx-auto w-full">
       <SessionsPageHeader />
 
       <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-5">

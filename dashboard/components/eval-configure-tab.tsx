@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCircle2,
+  ChevronDown,
   ClipboardList,
   Code2,
   FileCode2,
@@ -25,20 +26,6 @@ interface EvalConfigureTabProps {
   isRunning: boolean
 }
 
-const graderIcons: Record<string, React.ComponentType<{ className?: string }>> = {
-  ShieldCheck,
-  ClipboardList,
-  Gauge,
-  Code2,
-}
-
-const typeLabels: Record<EvalGraderKind, string> = {
-  rubric: 'Rubric judge',
-  python: 'Python grader',
-  typescript: 'TypeScript grader',
-  regex: 'Regex grader',
-}
-
 interface GraderDraftUpdate {
   name?: string
   model?: string
@@ -55,23 +42,53 @@ interface GraderDraftUpdate {
   flags?: string[]
 }
 
+const graderTypeMeta: Record<EvalGraderKind, {
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  color: string
+  bg: string
+}> = {
+  rubric: { label: 'Rubric judge', icon: Sparkles, color: 'text-[#534AB7]', bg: 'bg-[#534AB7]/10' },
+  python: { label: 'Python grader', icon: FileCode2, color: 'text-[#0C447C]', bg: 'bg-[#E6F1FB]' },
+  typescript: { label: 'TypeScript grader', icon: Code2, color: 'text-[#0C447C]', bg: 'bg-[#E6F1FB]' },
+  regex: { label: 'Regex grader', icon: Regex, color: 'text-[#27500A]', bg: 'bg-[#EAF3DE]' },
+}
+
+const graderTypeDescriptions: Record<EvalGraderKind, string> = {
+  rubric: 'LLM judges the output against a rubric',
+  python: 'Run a Python validate function',
+  typescript: 'Run a TypeScript validate function',
+  regex: 'Match a pattern against the output',
+}
+
+const deterministicDescriptions: Record<string, string> = {
+  'Tool usage': 'Validates that the agent used the right tools.',
+  'Output': 'Checks the final response text.',
+  'Limits': 'Enforces latency and cost budgets.',
+}
+
+const deterministicIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  ShieldCheck,
+  ClipboardList,
+  Gauge,
+}
+
 export function EvalConfigureTab({
   graders,
   setGraders,
   isRunning,
 }: EvalConfigureTabProps) {
   const [activeGraderId, setActiveGraderId] = useState<string | null>(graders[0]?.id ?? null)
-  const activeGrader = graders.find((grader) => grader.id === activeGraderId) ?? graders[0] ?? null
-  const activeRubric = activeGrader?.type === 'rubric' ? activeGrader : null
 
   useEffect(() => {
-    if (activeGrader && activeGrader.id !== activeGraderId) {
-      setActiveGraderId(activeGrader.id)
+    if (graders.length === 0) {
+      if (activeGraderId !== null) setActiveGraderId(null)
+      return
     }
-    if (!activeGrader && activeGraderId !== null) {
-      setActiveGraderId(null)
+    if (!graders.some((g) => g.id === activeGraderId)) {
+      setActiveGraderId(graders[0].id)
     }
-  }, [activeGrader, activeGraderId])
+  }, [graders, activeGraderId])
 
   function addGrader(type: EvalGraderKind) {
     setGraders((current) => {
@@ -91,167 +108,252 @@ export function EvalConfigureTab({
     })
   }
 
-  function updateActiveGrader(update: GraderDraftUpdate) {
-    if (!activeGrader) return
+  function updateGrader(id: string, update: GraderDraftUpdate) {
     setGraders((current) => (
-      current.map((grader) => (
-        grader.id === activeGrader.id ? mergeGraderDraft(grader, update) : grader
-      ))
+      current.map((grader) => (grader.id === id ? mergeGraderDraft(grader, update) : grader))
     ))
   }
 
   return (
     <div className="space-y-6 px-5 py-4">
       <div className="rounded-md border border-border bg-background">
-        <div className="border-b border-border px-4 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Sparkles className="h-4 w-4 text-[#534AB7]" />
-              Judges and graders
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <AddButton disabled={isRunning} onClick={() => addGrader('rubric')} icon={Sparkles}>
-                Rubric
-              </AddButton>
-              <AddButton disabled={isRunning} onClick={() => addGrader('python')} icon={FileCode2}>
-                Python
-              </AddButton>
-              <AddButton disabled={isRunning} onClick={() => addGrader('typescript')} icon={Code2}>
-                TypeScript
-              </AddButton>
-              <AddButton disabled={isRunning} onClick={() => addGrader('regex')} icon={Regex}>
-                Regex
-              </AddButton>
-            </div>
-          </div>
+        <div className="flex items-center gap-2 border-b border-border px-4 py-3 text-sm font-medium text-foreground">
+          <Sparkles className="h-4 w-4 text-[#534AB7]" />
+          Judges and graders
         </div>
 
-        <div className="p-4">
-          {activeGrader ? (
-            <div className="grid gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
-              <div className="space-y-2">
-                {graders.map((grader) => (
-                  <button
-                    key={grader.id}
-                    type="button"
-                    className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
-                      activeGrader.id === grader.id
-                        ? 'border-[#534AB7] bg-secondary'
-                        : 'border-border bg-background hover:bg-secondary'
-                    }`}
-                    onClick={() => setActiveGraderId(grader.id)}
-                  >
-                    <div className="truncate font-mono text-[11px] font-medium text-foreground" title={grader.name}>
-                      {grader.name || 'Unnamed'}
-                    </div>
-                    <div className="mt-1 text-[10px] text-muted-foreground">
-                      {typeLabels[grader.type]}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-5">
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                  <label className="block">
-                    <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                      Result name
-                    </span>
-                    <input
-                      className="ns-input h-8 w-full font-mono text-[11px]"
-                      value={activeGrader.name}
-                      onChange={(event) => updateActiveGrader({ name: event.currentTarget.value })}
-                      disabled={isRunning}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="mt-5 inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-[#F09595] bg-background px-2.5 text-[11px] font-medium text-[#791F1F] transition-colors hover:bg-[#FCEBEB] disabled:cursor-not-allowed disabled:opacity-60"
-                    onClick={() => removeGrader(activeGrader.id)}
-                    disabled={isRunning}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    Remove
-                  </button>
-                </div>
-
-                {activeGrader.type === 'rubric' && (
-                  <RubricEditor
-                    grader={activeGrader}
-                    isRunning={isRunning}
-                    updateActiveGrader={updateActiveGrader}
-                  />
-                )}
-
-                {(activeGrader.type === 'python' || activeGrader.type === 'typescript') && (
-                  <CodeEditor
-                    language={activeGrader.type}
-                    code={activeGrader.code}
-                    timeoutMs={activeGrader.timeoutMs}
-                    isRunning={isRunning}
-                    onCodeChange={(code) => updateActiveGrader({ code })}
-                    onTimeoutChange={(timeoutMs) => updateActiveGrader({ timeoutMs })}
-                  />
-                )}
-
-                {activeGrader.type === 'regex' && (
-                  <RegexEditor
-                    grader={activeGrader}
-                    isRunning={isRunning}
-                    updateActiveGrader={updateActiveGrader}
-                  />
-                )}
-              </div>
-            </div>
+        <div className="space-y-3 p-4">
+          {graders.length === 0 ? (
+            <EmptyState onAdd={addGrader} disabled={isRunning} />
           ) : (
-            <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-md border border-dashed border-border bg-secondary px-6 text-center">
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-background text-[#534AB7]">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-foreground">No custom graders configured</div>
-                <div className="mt-1 max-w-[360px] text-xs leading-relaxed text-muted-foreground">
-                  Deterministic graders will still run.
-                </div>
-              </div>
-            </div>
+            graders.map((grader) => (
+              <GraderCard
+                key={grader.id}
+                grader={grader}
+                isActive={grader.id === activeGraderId}
+                isRunning={isRunning}
+                onActivate={() => setActiveGraderId(grader.id)}
+                onUpdate={(update) => updateGrader(grader.id, update)}
+                onRemove={() => removeGrader(grader.id)}
+              />
+            ))
+          )}
+
+          {graders.length > 0 && (
+            <AddGraderButton onAdd={addGrader} disabled={isRunning} />
           )}
         </div>
       </div>
 
-      <div className="rounded-md border border-border bg-background">
-        <div className="border-b border-border px-4 py-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <ShieldCheck className="h-4 w-4 text-[#1D9E75]" />
-            Deterministic graders
+      <DeterministicGradersReference />
+    </div>
+  )
+}
+
+function GraderCard({
+  grader,
+  isActive,
+  isRunning,
+  onActivate,
+  onUpdate,
+  onRemove,
+}: {
+  grader: EvalGraderDraft
+  isActive: boolean
+  isRunning: boolean
+  onActivate: () => void
+  onUpdate: (update: GraderDraftUpdate) => void
+  onRemove: () => void
+}) {
+  const meta = graderTypeMeta[grader.type]
+  const Icon = meta.icon
+  const summary = getGraderSummary(grader)
+
+  return (
+    <div
+      onFocus={onActivate}
+      onClick={onActivate}
+      className={`relative rounded-md border bg-background transition-colors ${
+        isActive
+          ? 'border-l-2 border-l-[#534AB7] border-border'
+          : 'border-border hover:bg-secondary/30'
+      }`}
+    >
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${meta.bg} ${meta.color}`}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <input
+            value={grader.name}
+            onChange={(event) => onUpdate({ name: event.currentTarget.value })}
+            onFocus={onActivate}
+            disabled={isRunning}
+            spellCheck={false}
+            className="w-full bg-transparent font-mono text-[13px] font-medium text-foreground outline-none placeholder:text-muted-foreground"
+            placeholder="grader_name"
+          />
+          <div className="truncate text-[11px] text-muted-foreground">
+            {meta.label}
+            {summary ? <> · {summary}</> : null}
           </div>
         </div>
-        <div className="grid gap-4 p-4 md:grid-cols-3">
-          {deterministicGraders.map((group) => {
-            const Icon = graderIcons[group.icon]
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onRemove()
+          }}
+          disabled={isRunning}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[#FCEBEB] hover:text-[#791F1F] disabled:cursor-not-allowed disabled:opacity-50"
+          title="Remove grader"
+          aria-label="Remove grader"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="border-t border-border px-4 py-4">
+        {grader.type === 'rubric' && (
+          <RubricEditor
+            grader={grader}
+            isRunning={isRunning}
+            updateActiveGrader={onUpdate}
+          />
+        )}
+        {(grader.type === 'python' || grader.type === 'typescript') && (
+          <CodeEditor
+            language={grader.type}
+            code={grader.code}
+            timeoutMs={grader.timeoutMs}
+            isRunning={isRunning}
+            onCodeChange={(code) => onUpdate({ code })}
+            onTimeoutChange={(timeoutMs) => onUpdate({ timeoutMs })}
+          />
+        )}
+        {grader.type === 'regex' && (
+          <RegexEditor
+            grader={grader}
+            isRunning={isRunning}
+            updateActiveGrader={onUpdate}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function getGraderSummary(grader: EvalGraderDraft): string {
+  if (grader.type === 'rubric') {
+    const parts: string[] = []
+    if (grader.model) {
+      const segments = grader.model.split('/')
+      parts.push(segments[segments.length - 1] || grader.model)
+    }
+    parts.push(
+      grader.scoringMode === 'numeric'
+        ? `0-5 score · pass ≥ ${grader.passingScore}`
+        : 'pass/fail'
+    )
+    return parts.join(' · ')
+  }
+  if (grader.type === 'python' || grader.type === 'typescript') {
+    return `${grader.timeoutMs}ms timeout`
+  }
+  const flagLabels: string[] = []
+  if (grader.flags.includes('ignorecase')) flagLabels.push('i')
+  if (grader.flags.includes('multiline')) flagLabels.push('m')
+  if (grader.flags.includes('dotall')) flagLabels.push('s')
+  const target = grader.target || 'final_response'
+  return flagLabels.length > 0 ? `${target} · /${flagLabels.join('')}/g` : target
+}
+
+function AddGraderButton({
+  onAdd,
+  disabled,
+}: {
+  onAdd: (type: EvalGraderKind) => void
+  disabled: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function handlePointerDown(event: MouseEvent) {
+      if (!containerRef.current?.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [open])
+
+  const order: EvalGraderKind[] = ['rubric', 'python', 'typescript', 'regex']
+
+  return (
+    <div ref={containerRef} className="relative pt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-dashed border-border bg-background px-3 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Add grader
+        <ChevronDown className="h-3 w-3" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1.5 w-72 rounded-md border border-border bg-background p-1 shadow-md">
+          {order.map((kind) => {
+            const meta = graderTypeMeta[kind]
+            const Icon = meta.icon
             return (
-              <div key={group.title} className="rounded-md border border-border p-3">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-foreground">
-                  <span className={`flex h-5 w-5 items-center justify-center rounded ${group.bg} ${group.color}`}>
-                    <Icon className="h-3 w-3" />
-                  </span>
-                  {group.title}
+              <button
+                key={kind}
+                type="button"
+                onClick={() => {
+                  onAdd(kind)
+                  setOpen(false)
+                }}
+                className="flex w-full items-start gap-2.5 rounded px-2 py-2 text-left transition-colors hover:bg-secondary"
+              >
+                <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded ${meta.bg} ${meta.color}`}>
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-medium text-foreground">{meta.label}</div>
+                  <div className="truncate text-[10.5px] text-muted-foreground">{graderTypeDescriptions[kind]}</div>
                 </div>
-                <div className="flex flex-wrap gap-1">
-                  {group.items.map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-border bg-secondary px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              </button>
             )
           })}
         </div>
+      )}
+    </div>
+  )
+}
+
+function EmptyState({
+  onAdd,
+  disabled,
+}: {
+  onAdd: (type: EvalGraderKind) => void
+  disabled: boolean
+}) {
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-secondary/30 px-6 py-10 text-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-background text-[#534AB7]">
+        <Sparkles className="h-5 w-5" />
       </div>
+      <div>
+        <div className="text-sm font-medium text-foreground">No custom graders configured</div>
+        <div className="mt-1 max-w-[360px] text-xs leading-relaxed text-muted-foreground">
+          Deterministic graders will still run.
+        </div>
+      </div>
+      <AddGraderButton onAdd={onAdd} disabled={disabled} />
     </div>
   )
 }
@@ -266,7 +368,7 @@ function RubricEditor({
   updateActiveGrader: (update: GraderDraftUpdate) => void
 }) {
   return (
-    <div className="grid gap-6 xl:grid-cols-2">
+    <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
       <div className="space-y-3">
         <ModelCombobox
           value={grader.model}
@@ -317,7 +419,7 @@ function RubricEditor({
           Rubric
         </span>
         <textarea
-          className="ns-input min-h-[240px] w-full resize-none text-[11px] leading-relaxed"
+          className="ns-input min-h-[260px] w-full resize-y text-[12px] leading-relaxed"
           value={grader.rubric}
           onChange={(event) => updateActiveGrader({ rubric: event.currentTarget.value })}
           placeholder="Grade correctness, faithfulness, and clarity."
@@ -343,20 +445,37 @@ function CodeEditor({
   onCodeChange: (value: string) => void
   onTimeoutChange: (value: string) => void
 }) {
+  const langBadge = language === 'python' ? 'PY' : 'TS'
+  const signature = language === 'python'
+    ? 'def validate(output, case, run) -> bool:'
+    : 'export function validate(output, evalCase, run): boolean'
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[180px_minmax(0,1fr)]">
-      <NumberField label="Timeout ms" value={timeoutMs} onChange={onTimeoutChange} disabled={isRunning} />
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <NumberField
+          label="Timeout (ms)"
+          value={timeoutMs}
+          onChange={onTimeoutChange}
+          disabled={isRunning}
+          className="w-32"
+        />
+        <span className="inline-flex h-6 items-center rounded bg-[#E6F1FB] px-1.5 font-mono text-[10px] font-semibold text-[#0C447C]">
+          {langBadge}
+        </span>
+      </div>
       <label className="block">
         <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
           {language === 'python' ? 'Python validate function' : 'TypeScript validate function'}
         </span>
         <textarea
-          className="ns-input min-h-[280px] w-full resize-y font-mono text-[11px] leading-relaxed"
+          className="ns-input min-h-[320px] w-full resize-y font-mono text-[12px] leading-relaxed"
           value={code}
           onChange={(event) => onCodeChange(event.currentTarget.value)}
           spellCheck={false}
           disabled={isRunning}
         />
+        <p className="mt-1.5 font-mono text-[10.5px] text-muted-foreground">{signature}</p>
       </label>
     </div>
   )
@@ -371,8 +490,27 @@ function RegexEditor({
   isRunning: boolean
   updateActiveGrader: (update: GraderDraftUpdate) => void
 }) {
+  const flags: { value: 'ignorecase' | 'multiline' | 'dotall'; label: string; full: string }[] = [
+    { value: 'ignorecase', label: 'i', full: 'ignorecase' },
+    { value: 'multiline', label: 'm', full: 'multiline' },
+    { value: 'dotall', label: 's', full: 'dotall' },
+  ]
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_220px]">
+      <label className="block">
+        <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+          Pattern
+        </span>
+        <textarea
+          className="ns-input min-h-[200px] w-full resize-y font-mono text-[12px] leading-relaxed"
+          value={grader.pattern}
+          onChange={(event) => updateActiveGrader({ pattern: event.currentTarget.value })}
+          spellCheck={false}
+          placeholder={'^\\s*\\d+([.]\\d+)?\\s*$'}
+          disabled={isRunning}
+        />
+      </label>
       <div className="space-y-3">
         <label className="block">
           <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
@@ -383,155 +521,89 @@ function RegexEditor({
             value={grader.target}
             onChange={(event) => updateActiveGrader({ target: event.currentTarget.value })}
             disabled={isRunning}
+            placeholder="final_response"
           />
         </label>
         <div>
           <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
             Flags
           </span>
-          <div className="space-y-1.5">
-            {['ignorecase', 'multiline', 'dotall'].map((flag) => (
-              <label key={flag} className="flex items-center gap-2 text-[11px] text-foreground">
-                <input
-                  type="checkbox"
-                  checked={grader.flags.includes(flag)}
-                  onChange={(event) => {
-                    const flags = event.currentTarget.checked
-                      ? [...grader.flags, flag]
-                      : grader.flags.filter((item) => item !== flag)
-                    updateActiveGrader({ flags })
+          <div className="flex flex-wrap gap-1.5">
+            {flags.map((flag) => {
+              const active = grader.flags.includes(flag.value)
+              return (
+                <button
+                  key={flag.value}
+                  type="button"
+                  onClick={() => {
+                    const next = active
+                      ? grader.flags.filter((f) => f !== flag.value)
+                      : [...grader.flags, flag.value]
+                    updateActiveGrader({ flags: next })
                   }}
                   disabled={isRunning}
-                />
-                {flag}
-              </label>
-            ))}
+                  className={`inline-flex h-7 min-w-[2.5rem] items-center justify-center rounded-md border px-2 font-mono text-[11px] font-medium transition-colors ${
+                    active
+                      ? 'border-[#534AB7] bg-[#534AB7]/10 text-[#534AB7]'
+                      : 'border-border bg-background text-muted-foreground hover:bg-secondary hover:text-foreground'
+                  }`}
+                  title={flag.full}
+                  aria-pressed={active}
+                >
+                  /{flag.label}/
+                </button>
+              )
+            })}
           </div>
         </div>
       </div>
-
-      <label className="block">
-        <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-          Pattern
-        </span>
-        <textarea
-          className="ns-input min-h-[180px] w-full resize-y font-mono text-[11px] leading-relaxed"
-          value={grader.pattern}
-          onChange={(event) => updateActiveGrader({ pattern: event.currentTarget.value })}
-          spellCheck={false}
-          disabled={isRunning}
-        />
-      </label>
     </div>
   )
 }
 
-function AddButton({
-  disabled,
-  onClick,
-  icon: Icon,
-  children,
-}: {
-  disabled: boolean
-  onClick: () => void
-  icon: React.ComponentType<{ className?: string }>
-  children: React.ReactNode
-}) {
+function DeterministicGradersReference() {
   return (
-    <button
-      type="button"
-      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-[11px] font-medium text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-60"
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      {children}
-    </button>
+    <div className="rounded-md bg-secondary/40 px-4 py-4">
+      <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+        <ShieldCheck className="h-3.5 w-3.5 text-[#1D9E75]" />
+        Deterministic graders
+        <span className="rounded bg-background px-1.5 py-0.5 font-mono text-[10px] font-normal normal-case tracking-normal text-muted-foreground">
+          always applied
+        </span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {deterministicGraders.map((group) => {
+          const Icon = deterministicIconMap[group.icon]
+          return (
+            <div key={group.title} className="rounded-md border border-border bg-background p-3">
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className={`flex h-5 w-5 items-center justify-center rounded ${group.bg} ${group.color}`}>
+                  <Icon className="h-3 w-3" />
+                </span>
+                <div className="text-xs font-medium text-foreground">{group.title}</div>
+                <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                  {group.items.length} checks
+                </span>
+              </div>
+              <p className="mb-2 text-[10.5px] leading-relaxed text-muted-foreground">
+                {deterministicDescriptions[group.title] ?? ''}
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {group.items.map((item) => (
+                  <span
+                    key={item}
+                    className="rounded bg-secondary px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                  >
+                    {item}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
-}
-
-function mergeGraderDraft(grader: EvalGraderDraft, update: GraderDraftUpdate): EvalGraderDraft {
-  if (grader.type === 'rubric') {
-    return {
-      ...grader,
-      name: update.name ?? grader.name,
-      model: update.model ?? grader.model,
-      rubric: update.rubric ?? grader.rubric,
-      scoringMode: update.scoringMode ?? grader.scoringMode,
-      minScore: update.minScore ?? grader.minScore,
-      maxScore: update.maxScore ?? grader.maxScore,
-      passingScore: update.passingScore ?? grader.passingScore,
-      temperature: update.temperature ?? grader.temperature,
-    }
-  }
-
-  if (grader.type === 'python' || grader.type === 'typescript') {
-    return {
-      ...grader,
-      name: update.name ?? grader.name,
-      code: update.code ?? grader.code,
-      timeoutMs: update.timeoutMs ?? grader.timeoutMs,
-    }
-  }
-
-  return {
-    ...grader,
-    name: update.name ?? grader.name,
-    pattern: update.pattern ?? grader.pattern,
-    target: update.target ?? grader.target,
-    flags: update.flags ?? grader.flags,
-  }
-}
-
-function createDefaultGrader(current: EvalGraderDraft[], type: EvalGraderKind): EvalGraderDraft {
-  const prefix = type === 'rubric' ? 'rubric_judge' : `${type}_grader`
-  const existingNames = new Set(current.map((grader) => grader.name.trim()))
-  let nextNumber = current.length + 1
-  while (existingNames.has(`${prefix}_${nextNumber}`)) {
-    nextNumber += 1
-  }
-  const base = {
-    id: crypto.randomUUID(),
-    name: `${prefix}_${nextNumber}`,
-  }
-
-  if (type === 'python') {
-    return {
-      ...base,
-      type,
-      timeoutMs: '1000',
-      code: 'def validate(output, case, run):\n    return bool(output and output.strip())',
-    }
-  }
-  if (type === 'typescript') {
-    return {
-      ...base,
-      type,
-      timeoutMs: '1000',
-      code: 'export function validate(output, evalCase, run) {\n  return Boolean(output && output.trim())\n}',
-    }
-  }
-  if (type === 'regex') {
-    return {
-      ...base,
-      type,
-      pattern: '',
-      target: 'final_response',
-      flags: ['ignorecase'],
-    }
-  }
-
-  return {
-    ...base,
-    type,
-    model: DEFAULT_RUBRIC_JUDGE_MODEL,
-    rubric: '',
-    scoringMode: 'numeric',
-    minScore: '0',
-    maxScore: '5',
-    passingScore: '4',
-    temperature: '0',
-  }
 }
 
 function NumberField({
@@ -539,14 +611,16 @@ function NumberField({
   value,
   onChange,
   disabled,
+  className = '',
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  className?: string
 }) {
   return (
-    <label className="block">
+    <label className={`block ${className}`}>
       <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
         {label}
       </span>
@@ -558,14 +632,6 @@ function NumberField({
         disabled={disabled}
       />
     </label>
-  )
-}
-
-function ModelMetaPill({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-full border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-      {children}
-    </span>
   )
 }
 
@@ -721,13 +787,26 @@ function ModelCombobox({ value, disabled = false, onChange }: ModelComboboxProps
   }
 
   const showResults = isOpen && isFocused
+  const isUsingDefault = value === DEFAULT_RUBRIC_JUDGE_MODEL
 
   return (
     <div ref={containerRef} className="relative">
       <label className="block">
-        <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
-          Judge model
-        </span>
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+            Judge model
+          </span>
+          {!isUsingDefault && value && !disabled && (
+            <button
+              type="button"
+              className="text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+              onClick={() => onChange(DEFAULT_RUBRIC_JUDGE_MODEL)}
+              title={`Reset to default (${DEFAULT_RUBRIC_JUDGE_MODEL})`}
+            >
+              reset
+            </button>
+          )}
+        </div>
         <div
           className={`flex h-9 w-full items-center gap-1.5 rounded-md border bg-background pl-8 pr-2 transition-colors ${
             isOpen ? 'border-[#534AB7]' : 'border-input'
@@ -770,25 +849,6 @@ function ModelCombobox({ value, disabled = false, onChange }: ModelComboboxProps
           )}
         </div>
       </label>
-
-      <div className="mt-1.5 flex items-center gap-1.5 text-[10.5px] text-muted-foreground">
-        <span className="uppercase tracking-[0.06em]">Selected</span>
-        <span className="truncate rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-[10.5px] text-foreground" title={value}>
-          {value || 'none'}
-        </span>
-        {value && !disabled && (
-          <button
-            type="button"
-            className="ml-auto inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            onClick={() => {
-              onChange(DEFAULT_RUBRIC_JUDGE_MODEL)
-            }}
-            title={`Reset to default (${DEFAULT_RUBRIC_JUDGE_MODEL})`}
-          >
-            reset to default
-          </button>
-        )}
-      </div>
 
       {showResults && (
         <div
@@ -883,6 +943,14 @@ function ModelCombobox({ value, disabled = false, onChange }: ModelComboboxProps
   )
 }
 
+function ModelMetaPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full border border-border bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+      {children}
+    </span>
+  )
+}
+
 function formatModelTokens(tokens: number | null) {
   if (tokens === null) return 'context unknown'
   if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M ctx`
@@ -934,4 +1002,88 @@ function isNullableBoolean(value: unknown): value is boolean | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
+}
+
+function mergeGraderDraft(grader: EvalGraderDraft, update: GraderDraftUpdate): EvalGraderDraft {
+  if (grader.type === 'rubric') {
+    return {
+      ...grader,
+      name: update.name ?? grader.name,
+      model: update.model ?? grader.model,
+      rubric: update.rubric ?? grader.rubric,
+      scoringMode: update.scoringMode ?? grader.scoringMode,
+      minScore: update.minScore ?? grader.minScore,
+      maxScore: update.maxScore ?? grader.maxScore,
+      passingScore: update.passingScore ?? grader.passingScore,
+      temperature: update.temperature ?? grader.temperature,
+    }
+  }
+
+  if (grader.type === 'python' || grader.type === 'typescript') {
+    return {
+      ...grader,
+      name: update.name ?? grader.name,
+      code: update.code ?? grader.code,
+      timeoutMs: update.timeoutMs ?? grader.timeoutMs,
+    }
+  }
+
+  return {
+    ...grader,
+    name: update.name ?? grader.name,
+    pattern: update.pattern ?? grader.pattern,
+    target: update.target ?? grader.target,
+    flags: update.flags ?? grader.flags,
+  }
+}
+
+function createDefaultGrader(current: EvalGraderDraft[], type: EvalGraderKind): EvalGraderDraft {
+  const prefix = type === 'rubric' ? 'rubric_judge' : `${type}_grader`
+  const existingNames = new Set(current.map((grader) => grader.name.trim()))
+  let nextNumber = current.length + 1
+  while (existingNames.has(`${prefix}_${nextNumber}`)) {
+    nextNumber += 1
+  }
+  const base = {
+    id: crypto.randomUUID(),
+    name: `${prefix}_${nextNumber}`,
+  }
+
+  if (type === 'python') {
+    return {
+      ...base,
+      type,
+      timeoutMs: '1000',
+      code: 'def validate(output, case, run):\n    return bool(output and output.strip())',
+    }
+  }
+  if (type === 'typescript') {
+    return {
+      ...base,
+      type,
+      timeoutMs: '1000',
+      code: 'export function validate(output, evalCase, run) {\n  return Boolean(output && output.trim())\n}',
+    }
+  }
+  if (type === 'regex') {
+    return {
+      ...base,
+      type,
+      pattern: '',
+      target: 'final_response',
+      flags: ['ignorecase'],
+    }
+  }
+
+  return {
+    ...base,
+    type,
+    model: DEFAULT_RUBRIC_JUDGE_MODEL,
+    rubric: '',
+    scoringMode: 'numeric',
+    minScore: '0',
+    maxScore: '5',
+    passingScore: '4',
+    temperature: '0',
+  }
 }

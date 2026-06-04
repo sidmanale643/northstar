@@ -39,8 +39,8 @@ export function CostStat({
   return (
     <div
       className={cn(
-        'rounded-[10px] border bg-white px-4 py-3.5',
-        tone === 'ok' && 'border-[#9fe1cb]',
+        'rounded-xl border border-border/60 bg-card px-5 py-4 pb-3 shadow-sm',
+        tone === 'ok' && 'border-emerald-200 bg-emerald-50/10',
         className
       )}
     >

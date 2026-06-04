@@ -11,7 +11,6 @@ export function GlobalShell({ children }: { children: React.ReactNode }) {
           </span>
           northstar
         </Link>
-        <span className="ml-auto ns-pill">workspace</span>
       </header>
       <main className="mx-auto w-full max-w-[1240px] p-5 md:p-6">{children}</main>
     </div>

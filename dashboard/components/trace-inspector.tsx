@@ -112,34 +112,23 @@ function getIcon(type: SpanType) {
   }
 }
 
-function MetricBento({ label, value, icon: Icon, valueClass }: { label: string; value: string; icon: any; valueClass?: string }) {
-  return (
-    <div className="flex flex-col gap-1.5 p-3.5 rounded-xl bg-card border border-border/60 shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <Icon className="w-3.5 h-3.5 text-muted-foreground/70" /> {label}
-      </div>
-      <div className={cn("text-[17px] font-semibold tracking-tight font-mono", valueClass || "text-foreground")}>
-        {value}
-      </div>
-    </div>
-  )
-}
+
 
 function IOBlock({ label, value }: { label: string; value: unknown }) {
   const display = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
   return (
-    <div className="flex flex-col rounded-xl border border-border/50 overflow-hidden bg-[#0d0d0d] shadow-sm">
-      <div className="flex items-center justify-between px-3.5 py-2 border-b border-white/10 bg-white/5 backdrop-blur-md">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">{label}</span>
+    <div className="flex flex-col rounded-lg border bg-white shadow-sm overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-secondary/50">
+        <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
         <button 
           onClick={() => navigator.clipboard.writeText(display)}
-          className="text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="text-muted-foreground hover:text-foreground transition-colors"
           title="Copy to clipboard"
         >
           <Copy className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="p-3.5 max-h-96 overflow-y-auto custom-scrollbar text-[13px] font-mono leading-relaxed text-zinc-300">
+      <div className="p-3 text-[12px] font-mono leading-relaxed text-foreground bg-secondary/10">
         <pre className="whitespace-pre-wrap break-all">{display === 'null' || display === '""' ? '—' : display}</pre>
       </div>
     </div>
@@ -153,83 +142,67 @@ function DetailPanel({ node }: { node: SpanNode }) {
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
-      <div className="px-5 py-4 border-b border-border/60 bg-card/50 backdrop-blur-md sticky top-0 z-10 flex items-start justify-between">
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground/80 mb-1.5 flex items-center gap-1.5">
-            {node.breadcrumb.split(' › ').map((part, i, arr) => (
-              <span key={i} className="flex items-center gap-1.5">
-                <span className={i === arr.length - 1 ? 'text-foreground' : ''}>{part}</span>
-                {i < arr.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
-              </span>
-            ))}
-          </div>
-          <div className="flex items-center gap-2.5">
-            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center shadow-sm", getIconClass(node.type, true))}>
-              {getIcon(node.type)}
+      <div className="px-5 py-4 border-b border-border/60 bg-white sticky top-0 z-10 flex flex-col gap-3">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="text-[11px] font-medium text-muted-foreground/80 mb-1.5 flex items-center gap-1.5">
+              {node.breadcrumb.split(' › ').map((part, i, arr) => (
+                <span key={i} className="flex items-center gap-1.5">
+                  <span className={i === arr.length - 1 ? 'text-foreground' : ''}>{part}</span>
+                  {i < arr.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
+                </span>
+              ))}
             </div>
-            <h2 className="text-lg font-semibold tracking-tight text-foreground">{node.name}</h2>
-            {isTrace && (node.data as DashboardTrace).status === 'success' && (
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 ml-1" />
-            )}
+            <div className="flex items-center gap-2.5">
+              <div className={cn("w-7 h-7 rounded-md flex items-center justify-center", getIconClass(node.type, true))}>
+                {getIcon(node.type)}
+              </div>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">{node.name}</h2>
+              {isTrace && (node.data as DashboardTrace).status === 'success' && (
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 ml-1" />
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 bg-secondary/50 border p-1 rounded-md">
+            <button className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent hover:!bg-white">
+              <Database className="w-3 h-3" /> Dataset
+            </button>
+            <button className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent hover:!bg-white">
+              <Play className="w-3 h-3" /> Replay
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 bg-card border border-border/60 p-1 rounded-lg shadow-sm">
-          <button className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px]">
-            <Database className="w-3 h-3" /> Dataset
-          </button>
-          <button className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px]">
-            <Play className="w-3 h-3" /> Replay
-          </button>
-          <div className="w-px h-4 bg-border/60 mx-0.5" />
-          <button className="ns-button !border-transparent !shadow-none !h-7 !px-2 !text-muted-foreground">
-            <Flag className="w-3.5 h-3.5" />
-          </button>
-          <button className="ns-button !border-transparent !shadow-none !h-7 !px-2 !text-muted-foreground">
-            <Tag className="w-3.5 h-3.5" />
-          </button>
+        
+        {/* Compact Metrics Strip */}
+        <div className="flex items-center gap-3 text-[12px] text-muted-foreground font-medium bg-secondary/30 border border-border/50 rounded-md px-3 py-1.5 w-fit">
+          <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {node.duration}</div>
+          <div className="w-px h-3 bg-border" />
+          <div className="flex items-center gap-1.5"><Binary className="w-3.5 h-3.5" /> {node.tokens || '0 tok'}</div>
+          <div className="w-px h-3 bg-border" />
+          <div className="flex items-center gap-1.5"><DollarSign className="w-3.5 h-3.5" /> {node.cost || '$0.0000'}</div>
+          {isTrace && (
+             <>
+               <div className="w-px h-3 bg-border" />
+               <div className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5" /> {(node.data as DashboardTrace).model || 'unknown'}</div>
+             </>
+          )}
         </div>
       </div>
 
-      <div className="p-5 flex-1 overflow-y-auto space-y-6">
-        <div>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-            <BarChart2 className="w-4 h-4" /> Metrics
-          </h3>
-          <div className="grid grid-cols-3 gap-3">
-            {isTrace ? (
-              <>
-                <MetricBento label="Duration" value={node.duration} icon={Clock} valueClass="text-emerald-600 dark:text-emerald-400" />
-                <MetricBento label="Tokens" value={node.tokens || '—'} icon={Binary} valueClass="text-violet-600 dark:text-violet-400" />
-                <MetricBento label="Cost" value={node.cost || '—'} icon={DollarSign} valueClass="text-amber-600 dark:text-amber-400" />
-              </>
-            ) : (
-              <>
-                <MetricBento label="Duration" value={node.duration} icon={Clock} />
-                <MetricBento label="Tokens" value={node.tokens || '—'} icon={Binary} />
-                <MetricBento label="Cost" value={node.cost || '—'} icon={DollarSign} />
-              </>
-            )}
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider text-muted-foreground mb-3 flex items-center gap-1.5">
-            <Database className="w-4 h-4" /> Data
-          </h3>
-          <div className="grid grid-cols-1 gap-4">
-            {isTool && (
-              <>
-                <IOBlock label="Input Parameters" value={(node.data as DashboardToolCall).params} />
-                <IOBlock label="Output" value={(node.data as DashboardToolCall).output} />
-              </>
-            )}
-            {isEvent && (
-              <IOBlock label="Message Content" value={(node.data as DashboardTraceEvent).content} />
-            )}
-            {isTrace && (
-              <IOBlock label="Metadata" value={{ model: (node.data as DashboardTrace).model, status: (node.data as DashboardTrace).status, created: (node.data as DashboardTrace).created_at }} />
-            )}
-          </div>
+      <div className="p-5 flex-1 overflow-y-auto space-y-4">
+        <div className="grid grid-cols-1 gap-4">
+          {isTool && (
+            <>
+              <IOBlock label="Input Parameters" value={(node.data as DashboardToolCall).params} />
+              <IOBlock label="Output" value={(node.data as DashboardToolCall).output} />
+            </>
+          )}
+          {isEvent && (
+            <IOBlock label="Content" value={(node.data as DashboardTraceEvent).content} />
+          )}
+          {isTrace && (
+            <IOBlock label="Metadata" value={{ model: (node.data as DashboardTrace).model, status: (node.data as DashboardTrace).status, created: (node.data as DashboardTrace).created_at }} />
+          )}
         </div>
       </div>
     </div>

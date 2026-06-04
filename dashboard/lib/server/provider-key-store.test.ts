@@ -45,12 +45,20 @@ test('provider key store wraps Supabase errors as Error instances', () => {
 
 test('server env provider keys are preferred outside production', () => {
   const originalNodeEnv = process.env.NODE_ENV
-  process.env.NODE_ENV = 'development'
+  setNodeEnv('development')
   try {
     assert.equal(preferServerEnvProviderKeys(), true)
-    process.env.NODE_ENV = 'production'
+    setNodeEnv('production')
     assert.equal(preferServerEnvProviderKeys(), false)
   } finally {
-    process.env.NODE_ENV = originalNodeEnv
+    setNodeEnv(originalNodeEnv)
   }
 })
+
+function setNodeEnv(value: string | undefined) {
+  Object.defineProperty(process.env, 'NODE_ENV', {
+    value,
+    configurable: true,
+    writable: true,
+  })
+}

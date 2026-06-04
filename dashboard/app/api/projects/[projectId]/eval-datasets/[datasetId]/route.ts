@@ -2,12 +2,12 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { requireDashboardBackendProject } from '@/lib/api/project-access'
 import {
   DATASET_CONTENT_TYPES,
+  freeFormRowsToRecords,
   parseDatasetBytes,
   serializeDataset,
   SUPPORTED_DATASET_FORMATS,
-  tableRowsToRecords,
   type EvalDatasetFileFormat,
-  type EvalDatasetTableRow,
+  type FreeFormRow,
 } from '@/lib/eval-datasets'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -107,11 +107,11 @@ export async function PUT(
     return NextResponse.json({ error: 'Invalid dataset update JSON' }, { status: 400 })
   }
 
-  if (!isRecord(body) || !Array.isArray(body.rows) || !body.rows.every(isDatasetTableRow)) {
-    return NextResponse.json({ error: 'Dataset update requires table rows.' }, { status: 400 })
+  if (!isRecord(body) || !Array.isArray(body.rows) || !body.rows.every(isFreeFormRow)) {
+    return NextResponse.json({ error: 'Dataset update requires free-form rows.' }, { status: 400 })
   }
 
-  const records = tableRowsToRecords(body.rows)
+  const records = freeFormRowsToRecords(body.rows as FreeFormRow[])
   if (!records.ok) {
     return NextResponse.json({ error: records.error }, { status: 400 })
   }
@@ -157,7 +157,7 @@ export async function PUT(
     return NextResponse.json(
       {
         dataset: updated,
-        rows: records.records.length === body.rows.length ? body.rows : contentRows(records.records),
+        rows: records.records,
       },
       { headers: { 'Cache-Control': 'no-store' } }
     )
@@ -221,7 +221,7 @@ async function loadDatasetRaw(
 async function loadDatasetRows(
   storagePath: string,
   fileFormatValue: string
-): Promise<{ ok: true; rows: EvalDatasetTableRow[] } | { ok: false; error: string }> {
+): Promise<{ ok: true; rows: FreeFormRow[] } | { ok: false; error: string }> {
   const fileFormat = parseDatasetFileFormat(fileFormatValue)
   if (!fileFormat) {
     return { ok: false, error: 'Unsupported dataset format. Use JSON, JSONL, CSV, or XLSX.' }
@@ -243,26 +243,10 @@ function parseDatasetFileFormat(value: string): EvalDatasetFileFormat | null {
   return SUPPORTED_DATASET_FORMATS.find((format) => format === value) ?? null
 }
 
-function contentRows(records: Record<string, unknown>[]): EvalDatasetTableRow[] {
-  return records.map((record) => ({
-    id: typeof record.id === 'string' ? record.id : '',
-    input: typeof record.input === 'string' ? record.input : '',
-    messages: JSON.stringify(record.messages ?? [], null, 2),
-    expected: JSON.stringify(record.expected ?? {}, null, 2),
-    metrics: JSON.stringify(record.metrics ?? {}, null, 2),
-    metadata: JSON.stringify(record.metadata ?? {}, null, 2),
-  }))
-}
-
-function isDatasetTableRow(value: unknown): value is EvalDatasetTableRow {
+function isFreeFormRow(value: unknown): value is FreeFormRow {
   return (
     isRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.input === 'string' &&
-    typeof value.messages === 'string' &&
-    typeof value.expected === 'string' &&
-    typeof value.metrics === 'string' &&
-    typeof value.metadata === 'string'
+    typeof value.id === 'string'
   )
 }
 

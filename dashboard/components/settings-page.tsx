@@ -77,16 +77,16 @@ export function SettingsPage() {
 
   return (
     <>
-      <div className="ns-enter -m-5 grid min-h-[calc(100vh-48px)] grid-cols-[160px_1fr] md:-m-6">
-        <nav className="border-r bg-white/60 py-4">
+      <div className="ns-enter flex min-h-[calc(100vh-48px)] mx-auto w-full max-w-6xl">
+        <nav className="w-[180px] shrink-0 border-r bg-background/50 py-6 pr-4">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
               onClick={() => setActiveTab(id)}
               className={cn(
-                'flex h-8 w-full items-center gap-2 border-r-2 border-transparent px-3.5 text-left text-xs text-muted-foreground hover:bg-secondary hover:text-foreground',
-                activeTab === id && 'border-r-primary bg-[var(--ns-green-pale)] font-medium text-[var(--ns-green-dark)]'
+                'flex h-8 w-full items-center gap-2 rounded-md px-3 text-left text-xs text-muted-foreground transition-all mb-0.5',
+                activeTab === id ? 'bg-[var(--ns-green-pale)]/60 font-semibold text-[var(--ns-green-dark)]' : 'hover:bg-black/5 hover:text-foreground'
               )}
             >
               <Icon className="h-3.5 w-3.5" />
@@ -95,7 +95,7 @@ export function SettingsPage() {
           ))}
         </nav>
 
-        <div className="max-w-4xl p-6">
+        <div className="flex-1 px-8 py-6 min-w-0">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
               <div className="ns-label">Project configuration</div>

@@ -56,7 +56,7 @@ export default async function SessionPage({ params }: { params: { projectId: str
     errorCount > 0 ? 'error' : isActive ? 'active' : 'completed'
 
   return (
-    <div className="ns-enter space-y-5">
+    <div className="ns-enter p-6 space-y-6 max-w-6xl mx-auto w-full">
       <div>
         <ProjectContextLabel section={`Sessions / sess_${session.id.slice(0, 8)}`} />
 
@@ -169,7 +169,7 @@ function Stat({
   )
 
   return (
-    <div className="rounded-md bg-[var(--ns-panel)] p-4">
+    <div className="rounded-xl border border-border/60 bg-card p-5 pb-3 shadow-sm">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
           {label}

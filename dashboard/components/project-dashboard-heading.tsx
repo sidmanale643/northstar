@@ -1,6 +1,5 @@
 'use client'
 
-import { Radio } from 'lucide-react'
 import { useActiveProject } from '@/components/project-provider'
 
 export function ProjectDashboardHeading() {
@@ -15,10 +14,6 @@ export function ProjectDashboardHeading() {
           Recent traces and captured tool activity for the selected project.
         </p>
       </div>
-      <span className="ns-pill mt-1">
-        <Radio className="h-3 w-3 text-primary" />
-        ingestion ready
-      </span>
     </div>
   )
 }

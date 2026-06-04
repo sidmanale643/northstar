@@ -45,8 +45,8 @@
   body {
     @apply bg-background text-foreground antialiased;
     background-image:
-      linear-gradient(rgba(29, 158, 117, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(29, 158, 117, 0.025) 1px, transparent 1px);
+      linear-gradient(rgba(29, 158, 117, 0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(29, 158, 117, 0.015) 1px, transparent 1px);
     background-size: 24px 24px;
   }
 
@@ -66,16 +66,15 @@
   }
 
   .ns-panel {
-    @apply rounded-md border bg-white;
-    box-shadow: 0 1px 2px rgb(24 53 45 / 0.025);
+    @apply rounded-xl border border-border/60 bg-white;
   }
 
   .ns-button {
-    @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-md border bg-white px-3 text-xs font-medium text-muted-foreground transition-all duration-150 hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98];
+    @apply inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-border/60 bg-white px-3 text-xs font-medium text-muted-foreground transition-all duration-150 hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98] hover:border-border/80;
   }
 
   .ns-button-primary {
-    @apply border-transparent bg-primary text-primary-foreground hover:bg-[var(--ns-green-dark)] hover:text-white;
+    @apply border-transparent bg-primary text-primary-foreground hover:bg-[var(--ns-green-dark)] hover:text-white hover:border-transparent;
   }
 
   .ns-button-danger {

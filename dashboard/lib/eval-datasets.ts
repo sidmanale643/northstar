@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import * as XLSX from 'xlsx'
 
 export const MAX_DATASET_BYTES = 10 * 1024 * 1024
@@ -5,18 +6,11 @@ export const SUPPORTED_DATASET_FORMATS = ['json', 'jsonl', 'csv', 'xlsx'] as con
 
 export type EvalDatasetFileFormat = (typeof SUPPORTED_DATASET_FORMATS)[number]
 
-export interface EvalDatasetTableRow {
-  id: string
-  input: string
-  messages: string
-  expected: string
-  metrics: string
-  metadata: string
-}
+export type FreeFormRow = Record<string, unknown> & { id: string }
 
 export interface ParsedEvalDataset {
-  records: Record<string, unknown>[]
-  rows: EvalDatasetTableRow[]
+  records: FreeFormRow[]
+  rows: FreeFormRow[]
 }
 
 export const DATASET_CONTENT_TYPES: Record<EvalDatasetFileFormat, string> = {
@@ -26,27 +20,8 @@ export const DATASET_CONTENT_TYPES: Record<EvalDatasetFileFormat, string> = {
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 }
 
-const CASE_KEYS = new Set(['id', 'input', 'messages', 'expected', 'metrics', 'metadata'])
-const EXPECTED_KEYS = new Set([
-  'goal',
-  'ground_truth',
-  'context',
-  'rubric',
-  'required_tools',
-  'forbidden_tools',
-  'tool_sequence',
-  'contains',
-  'not_contains',
-  'tool_arguments',
-  'require_tool_output_reference',
-  'max_tool_calls',
-  'max_latency_ms',
-  'max_cost_usd',
-])
-const TOOL_ARGUMENT_KEYS = new Set(['name', 'arguments'])
-const METRIC_KEYS = new Set(['latency_ms', 'cost_usd'])
-const TABLE_COLUMNS = ['id', 'input', 'messages', 'expected', 'metrics', 'metadata'] as const
-type ColumnKey = (typeof TABLE_COLUMNS)[number]
+const ID_KEY = 'id'
+const MAX_CELL_LENGTH = 100_000
 
 export function getDatasetFileFormat(fileName: string): EvalDatasetFileFormat | null {
   const extension = fileName.split('.').pop()?.toLowerCase()
@@ -61,7 +36,7 @@ export function validateDatasetBytes(
   if (!parsed.ok) return parsed
 
   for (let index = 0; index < parsed.parsed.records.length; index += 1) {
-    const validation = validateCase(parsed.parsed.records[index])
+    const validation = validateFreeFormRow(parsed.parsed.records[index], parsed.parsed.records, index)
     if (!validation.ok) {
       return {
         ok: false,
@@ -87,62 +62,38 @@ export function parseDatasetBytes(
   return parseCsvDataset(text)
 }
 
-export function tableRowsToRecords(
-  rows: EvalDatasetTableRow[]
-): { ok: true; records: Record<string, unknown>[] } | { ok: false; error: string } {
-  const records: Record<string, unknown>[] = []
+export function freeFormRowsToRecords(
+  rows: FreeFormRow[]
+): { ok: true; records: FreeFormRow[] } | { ok: false; error: string } {
+  const seen = new Set<string>()
+  const records: FreeFormRow[] = []
 
   for (let index = 0; index < rows.length; index += 1) {
-    const row = normalizeTableRow(rows[index])
+    const row = normalizeFreeFormRow(rows[index])
     const rowNumber = index + 1
-    const record: Record<string, unknown> = {}
 
-    if (!row.id.trim()) return { ok: false, error: `Row ${rowNumber}: id is required.` }
-    record.id = row.id.trim()
-
-    if (row.input.trim()) record.input = row.input
-
-    const messages = parseJsonCell(row.messages, `Row ${rowNumber}: messages`)
-    if (!messages.ok) return messages
-    record.messages = messages.value
-
-    const expected = parseOptionalJsonCell(row.expected, `Row ${rowNumber}: expected`)
-    if (!expected.ok) return expected
-    if (expected.value !== undefined) record.expected = expected.value
-
-    const metrics = parseOptionalJsonCell(row.metrics, `Row ${rowNumber}: metrics`)
-    if (!metrics.ok) return metrics
-    if (metrics.value !== undefined) record.metrics = metrics.value
-
-    const metadata = parseOptionalJsonCell(row.metadata, `Row ${rowNumber}: metadata`)
-    if (!metadata.ok) return metadata
-    if (metadata.value !== undefined) record.metadata = metadata.value
-
-    const validation = validateCase(record)
-    if (!validation.ok) {
-      return { ok: false, error: `Row ${rowNumber}: ${validation.error}` }
+    if (typeof row.id !== 'string' || !row.id.trim()) {
+      return { ok: false, error: `Row ${rowNumber}: id is required.` }
     }
+    const id = row.id.trim()
+    if (seen.has(id)) {
+      return { ok: false, error: `Row ${rowNumber}: duplicate id "${id}".` }
+    }
+    seen.add(id)
 
-    records.push(record)
+    records.push(row)
   }
 
   return { ok: true, records }
 }
 
-export function recordsToTableRows(records: Record<string, unknown>[]): EvalDatasetTableRow[] {
-  return records.map((record) => ({
-    id: typeof record.id === 'string' ? record.id : '',
-    input: typeof record.input === 'string' ? record.input : '',
-    messages: formatJsonCell(record.messages, []),
-    expected: formatJsonCell(record.expected, {}),
-    metrics: formatJsonCell(record.metrics, {}),
-    metadata: formatJsonCell(record.metadata, {}),
-  }))
+export function newFreeFormRow(): FreeFormRow {
+  return { id: randomUUID() }
 }
 
 export function serializeDataset(
   format: EvalDatasetFileFormat,
-  records: Record<string, unknown>[]
+  records: FreeFormRow[]
 ): Uint8Array {
   if (format === 'json') {
     return new TextEncoder().encode(`${JSON.stringify(records, null, 2)}\n`)
@@ -151,12 +102,10 @@ export function serializeDataset(
     return new TextEncoder().encode(`${records.map((record) => JSON.stringify(record)).join('\n')}\n`)
   }
   if (format === 'csv') {
-    return new TextEncoder().encode(serializeCsv(recordsToTableRows(records)))
+    return new TextEncoder().encode(serializeCsv(records))
   }
 
-  const worksheet = XLSX.utils.json_to_sheet(recordsToTableRows(records), {
-    header: [...TABLE_COLUMNS],
-  })
+  const worksheet = XLSX.utils.json_to_sheet(records)
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Dataset')
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
@@ -226,18 +175,21 @@ function parseCsvDataset(
   if (parsedRows.rows.length === 0) return recordsToParsedDataset([])
 
   const [headers, ...dataRows] = parsedRows.rows
-  const missingHeader = TABLE_COLUMNS.find((column) => !headers.includes(column))
-  if (missingHeader) {
-    return { ok: false, error: `CSV dataset is missing "${missingHeader}" column.` }
+  if (!headers.includes(ID_KEY)) {
+    return { ok: false, error: 'CSV dataset must include an "id" column.' }
   }
 
   const rows = dataRows
     .filter((values) => values.some((value) => value.trim()))
-    .map((values) => normalizeTableRow(Object.fromEntries(
-      headers.map((header, index) => [header, values[index] ?? ''])
-    )))
+    .map((values) => {
+      const record: Record<string, unknown> = {}
+      headers.forEach((header, index) => {
+        record[header] = decodeCsvCell(values[index] ?? '')
+      })
+      return record
+    })
 
-  return tableRowsToParsedDataset(rows)
+  return recordsToParsedDataset(rows)
 }
 
 function parseXlsxDataset(
@@ -259,20 +211,9 @@ function parseXlsxDataset(
   const worksheet = workbook.Sheets[firstSheetName]
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet, {
     defval: '',
-  }).map(normalizeTableRow)
+  })
 
-  const firstRow = rows[0]
-  if (!firstRow) return tableRowsToParsedDataset([])
-
-  return tableRowsToParsedDataset(rows)
-}
-
-function tableRowsToParsedDataset(
-  rows: EvalDatasetTableRow[]
-): { ok: true; parsed: ParsedEvalDataset } | { ok: false; error: string } {
-  const records = tableRowsToRecords(rows)
-  if (!records.ok) return records
-  return { ok: true, parsed: { records: records.records, rows: recordsToTableRows(records.records) } }
+  return recordsToParsedDataset(rows)
 }
 
 function recordsToParsedDataset(
@@ -282,71 +223,53 @@ function recordsToParsedDataset(
     return { ok: false, error: 'Invalid eval dataset: every case must be an object.' }
   }
 
-  return {
-    ok: true,
-    parsed: {
-      records,
-      rows: recordsToTableRows(records),
-    },
-  }
+  return { ok: true, parsed: { records: records as FreeFormRow[], rows: records as FreeFormRow[] } }
 }
 
-function parseJsonCell(
-  value: string,
-  label: string
-): { ok: true; value: unknown } | { ok: false; error: string } {
-  if (!value.trim()) return { ok: false, error: `${label} is required.` }
-  try {
-    return { ok: true, value: JSON.parse(value) }
-  } catch (error) {
-    return {
-      ok: false,
-      error: `${label} must be valid JSON: ${error instanceof SyntaxError ? error.message : 'parse failed'}`,
+function normalizeFreeFormRow(value: FreeFormRow): FreeFormRow {
+  const out: Record<string, unknown> = {}
+  for (const [key, raw] of Object.entries(value)) {
+    out[key] = sanitizeValue(raw)
+  }
+  return out as FreeFormRow
+}
+
+function sanitizeValue(value: unknown): unknown {
+  if (value === undefined) return null
+  if (value === null) return null
+  if (typeof value === 'string') {
+    return value.length > MAX_CELL_LENGTH ? value.slice(0, MAX_CELL_LENGTH) : value
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return value.map(sanitizeValue)
+  if (typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = sanitizeValue(v)
+    }
+    return out
+  }
+  if (typeof value === 'bigint') return value.toString()
+  return null
+}
+
+function validateFreeFormRow(
+  value: unknown,
+  allRows: FreeFormRow[],
+  index: number
+): { ok: true } | { ok: false; error: string } {
+  if (!isRecord(value)) return { ok: false, error: 'case must be an object.' }
+  if (typeof value.id !== 'string' || !value.id.trim()) {
+    return { ok: false, error: 'id is required and must be a non-empty string.' }
+  }
+  const id = value.id.trim()
+  for (let i = 0; i < allRows.length; i += 1) {
+    if (i === index) continue
+    if (typeof allRows[i].id === 'string' && allRows[i].id.trim() === id) {
+      return { ok: false, error: `duplicate id "${id}".` }
     }
   }
-}
-
-function parseOptionalJsonCell(
-  value: string,
-  label: string
-): { ok: true; value: unknown | undefined } | { ok: false; error: string } {
-  if (!value.trim()) return { ok: true, value: undefined }
-  const parsed = parseJsonCell(value, label)
-  return parsed.ok ? { ok: true, value: parsed.value } : parsed
-}
-
-function formatJsonCell(value: unknown, fallback: unknown) {
-  return JSON.stringify(value === undefined || value === null ? fallback : value, null, 2)
-}
-
-function normalizeTableRow(value: Partial<Record<ColumnKey, unknown>>): EvalDatasetTableRow {
-  return {
-    id: cellToString(value.id),
-    input: cellToString(value.input),
-    messages: cellToString(value.messages),
-    expected: cellToString(value.expected),
-    metrics: cellToString(value.metrics),
-    metadata: cellToString(value.metadata),
-  }
-}
-
-function cellToString(value: unknown) {
-  if (value === undefined || value === null) return ''
-  if (typeof value === 'string') return value
-  return JSON.stringify(value, null, 2)
-}
-
-function serializeCsv(rows: EvalDatasetTableRow[]) {
-  const lines = [
-    TABLE_COLUMNS.map(escapeCsvCell).join(','),
-    ...rows.map((row) => TABLE_COLUMNS.map((column) => escapeCsvCell(row[column])).join(',')),
-  ]
-  return `${lines.join('\n')}\n`
-}
-
-function escapeCsvCell(value: string) {
-  if (!/[",\n\r]/.test(value)) return value
-  return `"${value.replace(/"/g, '""')}"`
+  return { ok: true }
 }
 
 function parseCsv(text: string): { ok: true; rows: string[][] } | { ok: false; error: string } {
@@ -396,109 +319,54 @@ function parseCsv(text: string): { ok: true; rows: string[][] } | { ok: false; e
   return { ok: true, rows }
 }
 
-function validateCase(value: unknown): { ok: true } | { ok: false; error: string } {
-  if (!isRecord(value)) return { ok: false, error: 'case must be an object.' }
-
-  const extraCaseKey = firstExtraKey(value, CASE_KEYS)
-  if (extraCaseKey) return { ok: false, error: `unexpected field "${extraCaseKey}".` }
-  if (typeof value.id !== 'string') return { ok: false, error: 'id must be a string.' }
-  if ('input' in value && !optionalString(value.input)) {
-    return { ok: false, error: 'input must be a string.' }
+function decodeCsvCell(raw: string): unknown {
+  const trimmed = raw.trim()
+  if (trimmed === '') return ''
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']')) ||
+    trimmed === 'null' ||
+    trimmed === 'true' ||
+    trimmed === 'false' ||
+    /^-?\d+(\.\d+)?$/.test(trimmed)
+  ) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return raw
+    }
   }
-  if (!Array.isArray(value.messages) || !value.messages.every(isRecord)) {
-    return { ok: false, error: 'messages must be a list of objects.' }
+  return raw
+}
+
+function serializeCsv(rows: FreeFormRow[]): string {
+  const headers = collectHeaders(rows)
+  const lines = [
+    headers.map(escapeCsvCell).join(','),
+    ...rows.map((row) => headers.map((header) => escapeCsvCell(encodeCsvCell(row[header]))).join(',')),
+  ]
+  return `${lines.join('\n')}\n`
+}
+
+function collectHeaders(rows: FreeFormRow[]): string[] {
+  const seen = new Set<string>()
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== ID_KEY) seen.add(key)
+    }
   }
-  if ('expected' in value && !validateExpected(value.expected)) {
-    return { ok: false, error: 'expected has invalid fields.' }
-  }
-  if ('metrics' in value && !validateMetrics(value.metrics)) {
-    return { ok: false, error: 'metrics has invalid fields.' }
-  }
-  if ('metadata' in value && !isRecord(value.metadata)) {
-    return { ok: false, error: 'metadata must be an object.' }
-  }
-
-  return { ok: true }
+  return [ID_KEY, ...Array.from(seen).sort()]
 }
 
-function validateExpected(value: unknown) {
-  if (!isRecord(value)) return false
-  if (firstExtraKey(value, EXPECTED_KEYS)) return false
-
-  return (
-    optionalString(value.goal) &&
-    optionalString(value.ground_truth) &&
-    optionalStringList(value.context) &&
-    optionalString(value.rubric) &&
-    optionalStringList(value.required_tools) &&
-    optionalStringList(value.forbidden_tools) &&
-    optionalStringList(value.tool_sequence) &&
-    optionalStringList(value.contains) &&
-    optionalStringList(value.not_contains) &&
-    optionalToolArguments(value.tool_arguments) &&
-    optionalBoolean(value.require_tool_output_reference) &&
-    optionalNonNegativeInteger(value.max_tool_calls) &&
-    optionalNonNegativeNumber(value.max_latency_ms) &&
-    optionalNonNegativeNumber(value.max_cost_usd)
-  )
+function encodeCsvCell(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'string') return value
+  return JSON.stringify(value)
 }
 
-function validateMetrics(value: unknown) {
-  if (!isRecord(value)) return false
-  if (firstExtraKey(value, METRIC_KEYS)) return false
-
-  return optionalNumber(value.latency_ms) && optionalNumber(value.cost_usd)
-}
-
-function optionalToolArguments(value: unknown) {
-  if (value === undefined || value === null) return true
-  if (!Array.isArray(value)) return false
-
-  return value.every((entry) => {
-    if (!isRecord(entry)) return false
-    if (firstExtraKey(entry, TOOL_ARGUMENT_KEYS)) return false
-    return typeof entry.name === 'string' && isRecord(entry.arguments)
-  })
-}
-
-function optionalString(value: unknown) {
-  return value === undefined || value === null || typeof value === 'string'
-}
-
-function optionalStringList(value: unknown) {
-  if (value === undefined || value === null || typeof value === 'string') return true
-  return Array.isArray(value) && value.every((item) => typeof item === 'string')
-}
-
-function optionalNonNegativeInteger(value: unknown) {
-  return (
-    value === undefined ||
-    value === null ||
-    (typeof value === 'number' && Number.isInteger(value) && value >= 0)
-  )
-}
-
-function optionalNonNegativeNumber(value: unknown) {
-  return (
-    value === undefined ||
-    value === null ||
-    (typeof value === 'number' && Number.isFinite(value) && value >= 0)
-  )
-}
-
-function optionalNumber(value: unknown) {
-  return value === undefined || value === null || (typeof value === 'number' && Number.isFinite(value))
-}
-
-function optionalBoolean(value: unknown) {
-  return value === undefined || value === null || typeof value === 'boolean'
-}
-
-function firstExtraKey(value: Record<string, unknown>, allowedKeys: Set<string>) {
-  for (const key of Object.keys(value)) {
-    if (!allowedKeys.has(key)) return key
-  }
-  return null
+function escapeCsvCell(value: string): string {
+  if (!/[",\n\r]/.test(value)) return value
+  return `"${value.replace(/"/g, '""')}"`
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -157,7 +157,9 @@ function RecentTraceRow({
               <Chip>sess_{trace.session_id.slice(0, 8)}</Chip>
               <Chip>{trace.tool_calls.length} tool call{trace.tool_calls.length === 1 ? '' : 's'}</Chip>
               {trace.model && <ModelChip model={trace.model} />}
-              <StatusChip tone={tone}>{isError ? 'errored' : isActive ? 'active' : trace.status || 'completed'}</StatusChip>
+              {(isError || isActive) && (
+                <StatusChip tone={tone}>{isError ? 'errored' : 'active'}</StatusChip>
+              )}
               <CostBadge cost={trace.cost_usd} />
             </div>
           </div>
