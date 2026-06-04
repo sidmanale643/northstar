@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { Activity, ArrowUpRight, Layers3, Wrench } from 'lucide-react'
-import { Tables } from '@/lib/supabase/types'
+import type { DashboardSession } from '@/lib/supabase/types'
 import { sessionHref, type ProjectId } from '@/lib/projects'
 
 interface SessionCardProps {
   projectId: ProjectId
-  session: Tables<'sessions'>
+  session: DashboardSession
   stats?: { traceCount: number; toolCallCount: number }
 }
 

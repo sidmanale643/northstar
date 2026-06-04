@@ -1,67 +1,77 @@
-import { Activity, Layers3, Radio, Wrench } from 'lucide-react'
+import { Activity, DollarSign, Layers3, Radio, Wrench } from 'lucide-react'
 import { ProjectDashboardHeading } from '@/components/project-dashboard-heading'
-import { SessionCard } from '@/components/session-card'
-import { createClient } from '@/lib/supabase/server'
-import { Tables } from '@/lib/supabase/types'
-import { DEMO_PROJECT_ID } from '@/lib/projects'
+import { RecentTraceTimeline } from '@/components/recent-trace-timeline'
+import { CostStat, type CostBreakdownEntry } from '@/components/cost-stat'
+import {
+  attachToolCalls,
+  getDashboardBackendProjectId,
+  getDashboardProjectCostSummary,
+  listDashboardSessions,
+  listDashboardTraces,
+  listSessionToolCalls,
+} from '@/lib/supabase/dashboard'
+import type { DashboardProjectCostSummary, DashboardSession, DashboardTraceWithToolCalls } from '@/lib/supabase/types'
+import { parseProjectId, type ProjectId } from '@/lib/projects'
+import { notFound } from 'next/navigation'
 
 export const dynamic = 'force-dynamic'
 
-interface SessionStats {
-  session_id: string
-  trace_count: number
-  tool_call_count: number
-}
-
 export default async function DashboardPage({ params }: { params: { projectId: string } }) {
-  let sessions: Tables<'sessions'>[] = []
-  let stats: SessionStats[] = []
+  const projectId = parseProjectId(params.projectId)
+  if (!projectId) notFound()
 
-  if (params.projectId === DEMO_PROJECT_ID) {
-    const supabase = createClient()
-    const [{ data: sessionsData }, { data: statsData }] = await Promise.all([
-      supabase.from('sessions').select('*').order('created_at', { ascending: false }).limit(12),
-      supabase.rpc('get_session_stats'),
+  const backendProjectId = getDashboardBackendProjectId(projectId)
+  let sessions: DashboardSession[] = []
+  let recentTraces: DashboardTraceWithToolCalls[] = []
+  let costSummary: DashboardProjectCostSummary | null = null
+
+  if (backendProjectId) {
+    [sessions, costSummary] = await Promise.all([
+      listDashboardSessions(backendProjectId),
+      getDashboardProjectCostSummary(backendProjectId),
     ])
-    sessions = (sessionsData ?? []) as Tables<'sessions'>[]
-    stats = (statsData ?? []) as SessionStats[]
+    const traceGroups = await Promise.all(
+      sessions.map(async (session) => {
+        const [traces, toolCalls] = await Promise.all([
+          listDashboardTraces(backendProjectId, session.id),
+          listSessionToolCalls(backendProjectId, session.id),
+        ])
+        return attachToolCalls(traces, toolCalls)
+      })
+    )
+    recentTraces = traceGroups.flat()
   }
 
-  const statsMap = new Map(
-    stats.map((session) => [
-      session.session_id,
-      { traceCount: session.trace_count, toolCallCount: session.tool_call_count },
-    ])
-  )
-  const totalTraces = stats.reduce((total, session) => total + session.trace_count, 0)
-  const totalTools = stats.reduce((total, session) => total + session.tool_call_count, 0)
+  const totalTraces = sessions.reduce((total, session) => total + session.trace_count, 0)
+  const totalTools = sessions.reduce((total, session) => total + session.tool_call_count, 0)
   const activeSessions = sessions.filter((session) => !session.ended_at).length
+  const breakdown = buildCostBreakdown(costSummary)
 
   return (
     <div className="ns-enter space-y-5">
       <ProjectDashboardHeading />
 
-      <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat label="Sessions" value={sessions.length} detail={`${activeSessions} active`} icon={Layers3} />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Stat label="Traces" value={totalTraces} detail="captured runs" icon={Activity} />
+        <Stat label="Sessions" value={sessions.length} detail={`${activeSessions} active`} icon={Layers3} />
         <Stat label="Tool calls" value={totalTools} detail="across all sessions" icon={Wrench} />
-        <Stat label="Pipeline" value="ready" detail="project configured" icon={Radio} accent />
+        <CostStat
+          label="Cost (30d)"
+          cost={costSummary?.cost_usd ?? 0}
+          inputTokens={costSummary?.input_tokens}
+          outputTokens={costSummary?.output_tokens}
+          detail={`${costSummary?.run_count ?? 0} runs`}
+          breakdown={breakdown}
+          icon={DollarSign}
+        />
+        <Stat label="Pipeline" value="ready" detail="project configured" icon={Radio} tone="ok" />
       </div>
 
       <section>
-        <div className="mb-2.5 flex items-center justify-between">
-          <h2 className="ns-label">Recent sessions</h2>
-          <span className="font-mono text-[10px] text-muted-foreground">{sessions.length} shown</span>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="ns-label">Recent trace timeline</h2>
         </div>
-        {sessions.length ? (
-          <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-            {sessions.map((session) => (
-              <SessionCard key={session.id} projectId={DEMO_PROJECT_ID} session={session} stats={statsMap.get(session.id)} />
-            ))}
-          </div>
-        ) : (
-          <EmptySessions />
-        )}
+        <RecentTraceTimeline projectId={projectId} traces={recentTraces} />
       </section>
     </div>
   )
@@ -72,36 +82,32 @@ function Stat({
   value,
   detail,
   icon: Icon,
-  accent = false,
+  tone = 'default',
 }: {
   label: string
   value: string | number
   detail: string
   icon: typeof Activity
-  accent?: boolean
+  tone?: 'default' | 'ok'
 }) {
   return (
-    <div className="ns-panel px-3 py-3">
+    <div className="rounded-[10px] border bg-white px-4 py-3.5">
       <div className="flex items-center justify-between">
         <div className="ns-label">{label}</div>
-        <Icon className={`h-3.5 w-3.5 ${accent ? 'text-primary' : 'text-muted-foreground'}`} />
+        <Icon className={`h-3.5 w-3.5 ${tone === 'ok' ? 'text-primary' : 'text-muted-foreground'}`} />
       </div>
-      <div className={`mt-2 font-mono text-lg font-medium ${accent ? 'text-primary' : 'text-foreground'}`}>{value}</div>
-      <div className="mt-0.5 text-[10px] text-muted-foreground">{detail}</div>
+      <div className={`mt-2 font-mono text-[26px] font-semibold leading-none tracking-[-0.03em] ${tone === 'ok' ? 'text-primary' : 'text-foreground'}`}>
+        {value}
+      </div>
+      <div className="mt-1 text-[11px] text-muted-foreground">{detail}</div>
     </div>
   )
 }
 
-function EmptySessions() {
-  return (
-    <div className="ns-panel flex min-h-52 flex-col items-center justify-center px-6 text-center">
-      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--ns-green-pale)] text-primary">
-        <Activity className="h-4 w-4" />
-      </span>
-      <h3 className="mt-3 text-sm font-medium">No sessions captured yet</h3>
-      <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-        Send an SDK trace to populate this project. New sessions will appear here automatically.
-      </p>
-    </div>
-  )
+function buildCostBreakdown(summary: DashboardProjectCostSummary | null): CostBreakdownEntry[] | undefined {
+  if (!summary || !summary.by_model || summary.by_model.length === 0) return undefined
+  return summary.by_model.map((entry) => ({
+    label: entry.model,
+    cost: entry.cost_usd,
+  }))
 }

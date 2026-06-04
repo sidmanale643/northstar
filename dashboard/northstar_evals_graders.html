@@ -1,0 +1,572 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.shell{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary)}
+.topbar{display:flex;align-items:center;gap:10px;padding:0 16px;height:46px;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.logo{font-size:13px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:6px}
+.logo-star{width:18px;height:18px;background:#1D9E75;border-radius:3px;display:flex;align-items:center;justify-content:center}
+.logo-star i{font-size:11px;color:#fff}
+.pill{font-size:11px;font-family:var(--font-mono);padding:3px 8px;border-radius:99px;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary)}
+.sep{flex:1}
+
+.layout{display:grid;grid-template-columns:210px 1fr;min-height:740px}
+.sidebar{border-right:0.5px solid var(--color-border-tertiary);padding:12px 0;background:var(--color-background-secondary)}
+.snav{display:flex;align-items:center;gap:8px;padding:6px 12px;font-size:12.5px;color:var(--color-text-secondary);cursor:pointer}
+.snav:hover{color:var(--color-text-primary);background:var(--color-background-primary)}
+.snav.active{background:var(--color-background-primary);color:var(--color-text-primary);border-right:2px solid #1D9E75}
+.snav i{font-size:14px}
+.ssec{padding:0 12px 4px;font-size:10px;font-weight:500;letter-spacing:.08em;color:var(--color-text-tertiary);text-transform:uppercase;margin-top:14px}
+
+.main{display:flex;flex-direction:column;overflow:hidden}
+.page{display:none;flex-direction:column;flex:1}
+.page.active{display:flex}
+
+.page-hdr{padding:14px 20px 12px;border-bottom:0.5px solid var(--color-border-tertiary);flex-shrink:0}
+.page-title{font-size:15px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:8px}
+.page-title i{font-size:17px;color:#1D9E75}
+.page-sub{font-size:12px;color:var(--color-text-tertiary);margin-top:3px}
+.page-actions{display:flex;gap:8px;margin-top:12px;align-items:center}
+.btn{font-size:12px;padding:6px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;display:flex;align-items:center;gap:5px}
+.btn:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.btn.primary{background:#1D9E75;color:#fff;border-color:#0F6E56}
+.btn.primary:hover{background:#0F6E56}
+.btn i{font-size:13px}
+
+.builder{display:grid;grid-template-columns:1fr 300px;flex:1;overflow:hidden;min-height:0}
+.grader-catalog{overflow-y:auto;padding:16px 18px;border-right:0.5px solid var(--color-border-tertiary);display:flex;flex-direction:column;gap:16px}
+.config-panel{overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;background:var(--color-background-secondary)}
+
+.cat-label{font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.cat-label i{font-size:13px}
+.grader-list{display:flex;flex-direction:column;gap:4px}
+
+.gc{display:flex;align-items:flex-start;gap:10px;padding:9px 11px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);cursor:pointer;background:var(--color-background-primary);transition:border-color .12s}
+.gc:hover{border-color:var(--color-border-secondary)}
+.gc.selected{border-color:#7F77DD;background:#EEEDFE}
+.gc.selected .gc-name{color:#3C3489}
+.gc-icon{width:26px;height:26px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
+.gi-tool{background:#FAEEDA;color:#633806}
+.gi-output{background:#E6F1FB;color:#0C447C}
+.gi-perf{background:#EAF3DE;color:#27500A}
+.gi-llm{background:#EEEDFE;color:#3C3489}
+.gc-body{flex:1;min-width:0}
+.gc-name{font-size:12.5px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:6px}
+.gc-desc{font-size:11px;color:var(--color-text-tertiary);margin-top:2px;line-height:1.4}
+.gc-badge{font-size:10px;padding:1px 6px;border-radius:99px;font-weight:500;margin-left:auto;flex-shrink:0}
+.badge-tool{background:#FAEEDA;color:#633806;border:0.5px solid #EF9F27}
+.badge-out{background:#E6F1FB;color:#0C447C;border:0.5px solid #85B7EB}
+.badge-perf{background:#EAF3DE;color:#27500A;border:0.5px solid #97C459}
+.badge-llm{background:#EEEDFE;color:#3C3489;border:0.5px solid #AFA9EC}
+.gc-check{font-size:14px;color:#534AB7;opacity:0;flex-shrink:0;margin-top:4px}
+.gc.selected .gc-check{opacity:1}
+
+.cp-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:8px;color:var(--color-text-tertiary);font-size:12px;text-align:center;padding:20px}
+.cp-empty i{font-size:28px;opacity:.4}
+
+.cp-header{font-size:12.5px;font-weight:500;color:var(--color-text-primary);display:flex;align-items:center;gap:6px;margin-bottom:2px}
+.cp-header i{font-size:14px}
+.cp-sub{font-size:11px;color:var(--color-text-tertiary);margin-bottom:12px;line-height:1.4}
+
+.active-grader{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden;background:var(--color-background-primary)}
+.ag-hdr{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:0.5px solid var(--color-border-tertiary);cursor:pointer}
+.ag-hdr:hover{background:var(--color-background-secondary)}
+.ag-icon{width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.ag-name{font-size:12px;font-weight:500;flex:1}
+.ag-remove{font-size:13px;color:var(--color-text-tertiary);cursor:pointer;padding:2px}
+.ag-remove:hover{color:#A32D2D}
+.ag-body{padding:10px;display:flex;flex-direction:column;gap:7px}
+.ag-body.collapsed{display:none}
+.field-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px;font-weight:500}
+.ns-input{font-size:12px;font-family:var(--font-mono);padding:5px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);width:100%;outline:none}
+.ns-input:focus{border-color:#1D9E75}
+.ns-select{font-size:12px;font-family:var(--font-mono);padding:5px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);outline:none;width:100%}
+.ns-textarea{font-size:11px;font-family:var(--font-mono);padding:6px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);width:100%;outline:none;resize:vertical;min-height:64px;line-height:1.5}
+.ns-textarea:focus{border-color:#1D9E75}
+.tag-input-wrap{display:flex;gap:5px}
+.tag-input-wrap input{flex:1}
+.tags-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tag{font-size:11px;font-family:var(--font-mono);padding:2px 7px;border-radius:99px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:4px;cursor:default}
+.tag i{font-size:11px;cursor:pointer;color:var(--color-text-tertiary)}
+.tag i:hover{color:#A32D2D}
+
+.run-btn-wrap{margin-top:auto;padding-top:10px;border-top:0.5px solid var(--color-border-tertiary)}
+
+.results-page{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:16px 20px 0}
+.sc{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px}
+.sc-label{font-size:11px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.06em}
+.sc-val{font-size:20px;font-weight:500;font-family:var(--font-mono);margin-top:3px}
+.sc-sub{font-size:11px;color:var(--color-text-tertiary);margin-top:1px}
+
+.filter-bar{display:flex;gap:6px;align-items:center;padding:10px 20px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.fpill{font-size:11.5px;padding:3px 10px;border-radius:99px;border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary);cursor:pointer;background:var(--color-background-primary)}
+.fpill:hover{background:var(--color-background-secondary)}
+.fpill.on{background:#E1F5EE;color:#085041;border-color:#5DCAA5}
+.fpill.on-fail{background:#FCEBEB;color:#791F1F;border-color:#F09595}
+
+.rt{border-collapse:collapse;width:100%;table-layout:fixed}
+.rt th{font-size:10.5px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-tertiary);padding:7px 12px;background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);text-align:left}
+.rt td{font-size:12px;padding:8px 12px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:top;color:var(--color-text-primary)}
+.rt tr:last-child td{border-bottom:none}
+.rt tr:hover td{background:var(--color-background-secondary);cursor:pointer}
+.rt tr.exp-open td{background:var(--color-background-secondary)}
+.case-id{font-family:var(--font-mono);font-size:11.5px;color:var(--color-text-secondary)}
+.case-input-cell{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+.vbadge{font-size:11px;padding:2px 7px;border-radius:99px;font-weight:500;white-space:nowrap;display:inline-flex;align-items:center;gap:3px}
+.vpass{background:#E1F5EE;color:#085041;border:0.5px solid #5DCAA5}
+.vfail{background:#FCEBEB;color:#791F1F;border:0.5px solid #F09595}
+.vna{background:#F1EFE8;color:#444441;border:0.5px solid #B4B2A9}
+
+.exp-row td{padding:0!important;border-bottom:0.5px solid var(--color-border-tertiary)}
+.exp-inner{padding:10px 12px;display:none;flex-direction:column;gap:10px}
+.exp-inner.open{display:flex}
+.exp-io{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.io-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:var(--color-text-tertiary);font-weight:500;margin-bottom:4px}
+.io-val{font-size:11px;font-family:var(--font-mono);background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:7px 9px;color:var(--color-text-secondary);word-break:break-all;line-height:1.4}
+.grader-breakdown{display:flex;flex-direction:column;gap:5px}
+.gb-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);background:var(--color-background-primary)}
+.gb-icon{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0}
+.gb-name{font-size:12px;color:var(--color-text-secondary);flex:1;font-family:var(--font-mono)}
+.gb-reason{font-size:11px;color:var(--color-text-tertiary)}
+</style>
+
+<h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">NorthStar eval builder — select graders from a catalog, configure each one, then run against a dataset to get per-case pass/fail results.</h2>
+
+<div class="shell">
+  <div class="topbar">
+    <div class="logo"><div class="logo-star"><i class="ti ti-star" aria-hidden="true"></i></div>northstar</div>
+    <span class="pill">research-agent</span>
+    <div class="sep"></div>
+    <span class="pill">env: prod</span>
+  </div>
+  <div class="layout">
+    <div class="sidebar">
+      <div class="ssec">Navigation</div>
+      <div class="snav"><i class="ti ti-activity" aria-hidden="true"></i>Traces</div>
+      <div class="snav"><i class="ti ti-layers-intersect" aria-hidden="true"></i>Sessions</div>
+      <div class="snav"><i class="ti ti-chart-bar" aria-hidden="true"></i>Metrics</div>
+      <div class="snav active"><i class="ti ti-bug" aria-hidden="true"></i>Evals</div>
+      <div class="snav"><i class="ti ti-settings" aria-hidden="true"></i>Settings</div>
+      <div class="ssec">Recent runs</div>
+      <div class="snav" onclick="showResults()" style="padding-left:14px;font-family:var(--font-mono);font-size:11.5px"><i class="ti ti-check" style="font-size:12px;color:#1D9E75" aria-hidden="true"></i>run_0603_01</div>
+      <div class="snav" style="padding-left:14px;font-family:var(--font-mono);font-size:11.5px"><i class="ti ti-check" style="font-size:12px;color:#1D9E75" aria-hidden="true"></i>run_0601_03</div>
+      <div class="snav" style="padding-left:14px;font-family:var(--font-mono);font-size:11.5px"><i class="ti ti-alert-triangle" style="font-size:12px;color:#EF9F27" aria-hidden="true"></i>run_0530_02</div>
+    </div>
+
+    <div class="main">
+
+      <div class="page active" id="page-builder">
+        <div class="page-hdr">
+          <div class="page-title"><i class="ti ti-bug" aria-hidden="true"></i>Eval builder</div>
+          <div class="page-sub">Pick graders from the catalog, configure them, then run against a dataset</div>
+          <div class="page-actions">
+            <span style="font-size:12px;color:var(--color-text-secondary)">Dataset:</span>
+            <select style="font-size:12px;font-family:var(--font-mono);padding:5px 8px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-primary);outline:none">
+              <option>research_agent_v2 (48 cases)</option>
+              <option>edge_cases_jul25 (12 cases)</option>
+              <option>regression_suite (120 cases)</option>
+            </select>
+            <div class="sep"></div>
+            <button class="btn primary" onclick="showResults()"><i class="ti ti-player-play" aria-hidden="true"></i>Run eval</button>
+          </div>
+        </div>
+
+        <div class="builder">
+          <div class="grader-catalog">
+
+            <div>
+              <div class="cat-label"><i class="ti ti-tool" style="color:#BA7517" aria-hidden="true"></i>Tool usage graders</div>
+              <div class="grader-list">
+                <div class="gc" onclick="toggleGrader(this,'MaxToolCalls','tool')">
+                  <div class="gc-icon gi-tool"><i class="ti ti-hash" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">MaxToolCalls <span class="gc-badge badge-tool">tool</span></div>
+                    <div class="gc-desc">Agent must not exceed a specified number of tool calls per run.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+                <div class="gc selected" onclick="toggleGrader(this,'RequiredTools','tool')">
+                  <div class="gc-icon gi-tool"><i class="ti ti-checks" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">RequiredTools <span class="gc-badge badge-tool">tool</span></div>
+                    <div class="gc-desc">Agent must invoke specific tools to complete the task.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+                <div class="gc" onclick="toggleGrader(this,'ForbiddenTools','tool')">
+                  <div class="gc-icon gi-tool"><i class="ti ti-ban" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">ForbiddenTools <span class="gc-badge badge-tool">tool</span></div>
+                    <div class="gc-desc">Agent must not call any of the listed forbidden tools.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+                <div class="gc" onclick="toggleGrader(this,'ToolArgumentsMatch','tool')">
+                  <div class="gc-icon gi-tool"><i class="ti ti-adjustments" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">ToolArgumentsMatch <span class="gc-badge badge-tool">tool</span></div>
+                    <div class="gc-desc">Checks tool calls were made with the correct expected arguments.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="cat-label"><i class="ti ti-align-left" style="color:#185FA5" aria-hidden="true"></i>Output / content graders</div>
+              <div class="grader-list">
+                <div class="gc selected" onclick="toggleGrader(this,'Contains','output')">
+                  <div class="gc-icon gi-output"><i class="ti ti-text-size" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">Contains <span class="gc-badge badge-out">output</span></div>
+                    <div class="gc-desc">Final output must contain a specific string or pattern.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+                <div class="gc" onclick="toggleGrader(this,'NotContains','output')">
+                  <div class="gc-icon gi-output"><i class="ti ti-text-off" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">NotContains <span class="gc-badge badge-out">output</span></div>
+                    <div class="gc-desc">Final output must not contain prohibited words or phrases.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+                <div class="gc" onclick="toggleGrader(this,'GroundTruthMatch','output')">
+                  <div class="gc-icon gi-output"><i class="ti ti-target" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">GroundTruthMatch <span class="gc-badge badge-out">output</span></div>
+                    <div class="gc-desc">Output matches the expected ground truth answer for the case.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="cat-label"><i class="ti ti-gauge" style="color:#3B6D11" aria-hidden="true"></i>Performance graders</div>
+              <div class="grader-list">
+                <div class="gc" onclick="toggleGrader(this,'LatencyUnder','perf')">
+                  <div class="gc-icon gi-perf"><i class="ti ti-clock" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">LatencyUnder <span class="gc-badge badge-perf">perf</span></div>
+                    <div class="gc-desc">Agent run must complete within a specified time threshold.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+                <div class="gc" onclick="toggleGrader(this,'CostUnder','perf')">
+                  <div class="gc-icon gi-perf"><i class="ti ti-coin" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">CostUnder <span class="gc-badge badge-perf">perf</span></div>
+                    <div class="gc-desc">Token cost for the run must stay under a specified threshold.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="cat-label"><i class="ti ti-sparkles" style="color:#534AB7" aria-hidden="true"></i>LLM-as-a-judge</div>
+              <div class="grader-list">
+                <div class="gc selected" onclick="toggleGrader(this,'RubricJudge','llm')">
+                  <div class="gc-icon gi-llm"><i class="ti ti-sparkles" aria-hidden="true"></i></div>
+                  <div class="gc-body">
+                    <div class="gc-name">RubricJudge <span class="gc-badge badge-llm">llm</span></div>
+                    <div class="gc-desc">LLM evaluates output against a custom rubric. Only grader that returns qualitative feedback.</div>
+                  </div>
+                  <i class="ti ti-circle-check gc-check" aria-hidden="true"></i>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div class="config-panel" id="config-panel">
+            <div style="font-size:11px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--color-text-tertiary);margin-bottom:4px">Active graders</div>
+            <div id="active-graders" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div class="cp-empty" id="cp-empty" style="display:none"><i class="ti ti-click" aria-hidden="true"></i>Click a grader in the catalog to add it</div>
+            <div class="run-btn-wrap" id="run-btn-wrap" style="display:none">
+              <button class="btn primary" style="width:100%;justify-content:center" onclick="showResults()"><i class="ti ti-player-play" aria-hidden="true"></i>Run eval — 48 cases</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="page" id="page-results">
+        <div class="page-hdr">
+          <div class="page-title"><i class="ti ti-chart-bar" aria-hidden="true"></i>Results · run_0603_01</div>
+          <div class="page-sub">research_agent_v2 · 48 cases · 3 graders</div>
+          <div class="page-actions">
+            <button class="btn" onclick="showBuilder()"><i class="ti ti-arrow-left" aria-hidden="true"></i>Back to builder</button>
+            <button class="btn"><i class="ti ti-download" aria-hidden="true"></i>Export CSV</button>
+          </div>
+        </div>
+        <div class="results-page">
+          <div class="stats-row">
+            <div class="sc"><div class="sc-label">Overall pass</div><div class="sc-val" style="color:#085041">75%</div><div class="sc-sub">36 / 48 cases</div></div>
+            <div class="sc"><div class="sc-label">RequiredTools</div><div class="sc-val">88%</div><div class="sc-sub">42 / 48</div></div>
+            <div class="sc"><div class="sc-label">Contains</div><div class="sc-val">81%</div><div class="sc-sub">39 / 48</div></div>
+            <div class="sc"><div class="sc-label">RubricJudge</div><div class="sc-val">79%</div><div class="sc-sub">38 / 48</div></div>
+          </div>
+          <div class="filter-bar">
+            <span style="font-size:12px;color:var(--color-text-secondary)">Filter:</span>
+            <span class="fpill on" onclick="setFilter(this,'all')">All (48)</span>
+            <span class="fpill" onclick="setFilter(this,'pass')">Pass (36)</span>
+            <span class="fpill" onclick="setFilter(this,'fail')">Fail (12)</span>
+          </div>
+          <div style="overflow-x:auto;padding:0 20px 16px">
+            <table class="rt">
+              <thead>
+                <tr>
+                  <th style="width:90px">Case ID</th>
+                  <th>Input</th>
+                  <th style="width:110px">RequiredTools</th>
+                  <th style="width:90px">Contains</th>
+                  <th style="width:100px">RubricJudge</th>
+                  <th style="width:24px"></th>
+                </tr>
+              </thead>
+              <tbody id="results-tbody">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const graderDefs = {
+  MaxToolCalls:{cat:'tool',icon:'ti-hash',cls:'gi-tool',label:'MaxToolCalls',fields:[{key:'max',label:'Max calls',type:'number',placeholder:'e.g. 5'}]},
+  RequiredTools:{cat:'tool',icon:'ti-checks',cls:'gi-tool',label:'RequiredTools',fields:[{key:'tools',label:'Required tools',type:'tags',placeholder:'tool name, enter to add'}]},
+  ForbiddenTools:{cat:'tool',icon:'ti-ban',cls:'gi-tool',label:'ForbiddenTools',fields:[{key:'tools',label:'Forbidden tools',type:'tags',placeholder:'tool name, enter to add'}]},
+  ToolArgumentsMatch:{cat:'tool',icon:'ti-adjustments',cls:'gi-tool',label:'ToolArgumentsMatch',fields:[{key:'tool',label:'Tool name',type:'text',placeholder:'e.g. web_search'},{key:'args',label:'Expected args (JSON)',type:'text',placeholder:'{"query":"..."}'}]},
+  Contains:{cat:'output',icon:'ti-text-size',cls:'gi-output',label:'Contains',fields:[{key:'pattern',label:'Expected pattern',type:'text',placeholder:'substring or /regex/'},{key:'mode',label:'Match mode',type:'select',opts:['Substring','Regex','Case-insensitive']}]},
+  NotContains:{cat:'output',icon:'ti-text-off',cls:'gi-output',label:'NotContains',fields:[{key:'patterns',label:'Prohibited phrases',type:'tags',placeholder:'phrase, enter to add'}]},
+  GroundTruthMatch:{cat:'output',icon:'ti-target',cls:'gi-output',label:'GroundTruthMatch',fields:[{key:'field',label:'Truth field in dataset',type:'text',placeholder:'e.g. expected_output'},{key:'mode',label:'Comparison',type:'select',opts:['Exact','Fuzzy','Semantic']}]},
+  LatencyUnder:{cat:'perf',icon:'ti-clock',cls:'gi-perf',label:'LatencyUnder',fields:[{key:'ms',label:'Max latency (ms)',type:'number',placeholder:'e.g. 5000'}]},
+  CostUnder:{cat:'perf',icon:'ti-coin',cls:'gi-perf',label:'CostUnder',fields:[{key:'usd',label:'Max cost (USD)',type:'number',placeholder:'e.g. 0.01'}]},
+  RubricJudge:{cat:'llm',icon:'ti-sparkles',cls:'gi-llm',label:'RubricJudge',fields:[{key:'model',label:'Judge model',type:'select',opts:['claude-sonnet-4','claude-haiku-4-5','gpt-4o-mini']},{key:'rubric',label:'Rubric',type:'textarea',placeholder:'Describe what pass looks like. The model returns pass/fail + reasoning.'}]}
+};
+
+const activeGraders = {};
+const tags = {};
+
+function toggleGrader(el, name, cat) {
+  const isOn = el.classList.contains('selected');
+  if(isOn) {
+    el.classList.remove('selected');
+    delete activeGraders[name];
+    const ag = document.getElementById('ag-'+name);
+    if(ag) ag.remove();
+  } else {
+    el.classList.add('selected');
+    activeGraders[name] = true;
+    renderActiveGrader(name);
+  }
+  syncPanel();
+}
+
+function renderActiveGrader(name) {
+  const d = graderDefs[name];
+  const wrap = document.createElement('div');
+  wrap.className = 'active-grader';
+  wrap.id = 'ag-'+name;
+  const catColors = {tool:'gi-tool',output:'gi-output',perf:'gi-perf',llm:'gi-llm'};
+  wrap.innerHTML = `<div class="ag-hdr" onclick="toggleAgBody('${name}')">
+    <div class="ag-icon ${d.cls}" style="width:20px;height:20px;font-size:11px"><i class="ti ${d.icon}" aria-hidden="true"></i></div>
+    <span class="ag-name">${d.label}</span>
+    <i class="ti ti-chevron-down" style="font-size:12px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+    <i class="ti ti-x ag-remove" onclick="removeGrader(event,'${name}')" aria-label="Remove ${name}"></i>
+  </div>
+  <div class="ag-body" id="ag-body-${name}">
+    ${d.fields.map(f => renderField(name, f)).join('')}
+  </div>`;
+  document.getElementById('active-graders').appendChild(wrap);
+  if(name === 'RequiredTools') {
+    tags['RequiredTools'] = ['web_search','fetch_page'];
+    renderTags('RequiredTools');
+  }
+  if(name === 'Contains') {
+    document.querySelector('#ag-Contains input.ns-input') && (document.querySelector('#ag-Contains input.ns-input').value = '{"summary"');
+  }
+}
+
+function renderField(name, f) {
+  if(f.type === 'number' || f.type === 'text') {
+    return `<div><div class="field-label">${f.label}</div><input class="ns-input" placeholder="${f.placeholder}" type="${f.type === 'number' ? 'number' : 'text'}"></div>`;
+  }
+  if(f.type === 'select') {
+    return `<div><div class="field-label">${f.label}</div><select class="ns-select">${f.opts.map(o=>`<option>${o}</option>`).join('')}</select></div>`;
+  }
+  if(f.type === 'textarea') {
+    return `<div><div class="field-label">${f.label}</div><textarea class="ns-textarea" placeholder="${f.placeholder}"></textarea></div>`;
+  }
+  if(f.type === 'tags') {
+    return `<div><div class="field-label">${f.label}</div>
+      <div class="tag-input-wrap">
+        <input class="ns-input" placeholder="${f.placeholder}" onkeydown="addTag(event,'${name}')">
+        <button class="btn" style="padding:4px 8px;flex-shrink:0" onclick="addTagBtn('${name}',this)"><i class="ti ti-plus" aria-hidden="true"></i></button>
+      </div>
+      <div class="tags-row" id="tags-${name}"></div>
+    </div>`;
+  }
+  return '';
+}
+
+function addTag(e, name) {
+  if(e.key !== 'Enter') return;
+  const val = e.target.value.trim();
+  if(!val) return;
+  if(!tags[name]) tags[name] = [];
+  tags[name].push(val);
+  e.target.value = '';
+  renderTags(name);
+}
+
+function addTagBtn(name, btn) {
+  const input = btn.previousElementSibling;
+  const val = input.value.trim();
+  if(!val) return;
+  if(!tags[name]) tags[name] = [];
+  tags[name].push(val);
+  input.value = '';
+  renderTags(name);
+}
+
+function renderTags(name) {
+  const row = document.getElementById('tags-'+name);
+  if(!row) return;
+  row.innerHTML = (tags[name]||[]).map((t,i) => `<span class="tag">${t}<i class="ti ti-x" onclick="removeTag('${name}',${i})" aria-label="remove"></i></span>`).join('');
+}
+
+function removeTag(name, i) {
+  tags[name].splice(i,1);
+  renderTags(name);
+}
+
+function toggleAgBody(name) {
+  const body = document.getElementById('ag-body-'+name);
+  if(!body) return;
+  body.classList.toggle('collapsed');
+}
+
+function removeGrader(e, name) {
+  e.stopPropagation();
+  delete activeGraders[name];
+  const ag = document.getElementById('ag-'+name);
+  if(ag) ag.remove();
+  document.querySelectorAll('.gc').forEach(el => {
+    if(el.onclick && el.onclick.toString().includes(`'${name}'`)) el.classList.remove('selected');
+  });
+  document.querySelectorAll('.gc[onclick]').forEach(el => {
+    const match = el.getAttribute('onclick') && el.getAttribute('onclick').includes(`'${name}'`);
+    if(match) el.classList.remove('selected');
+  });
+  syncPanel();
+}
+
+function syncPanel() {
+  const count = Object.keys(activeGraders).length;
+  document.getElementById('cp-empty').style.display = count === 0 ? 'flex' : 'none';
+  document.getElementById('run-btn-wrap').style.display = count > 0 ? 'block' : 'none';
+}
+
+const resultData = [
+  {id:'case_001',input:'Summarize transformer attention research',rt:'pass',ct:'pass',rj:'pass',rtReason:'Called web_search and fetch_page',ctReason:'Output contains "attention"',rjReason:'Accurate, well-sourced summary',output:'Recent work focuses on linear attention variants (Mamba, RWKV) to reduce O(n²) complexity...'},
+  {id:'case_002',input:'List top 5 Python LLM tracing libraries',rt:'fail',ct:'pass',rj:'fail',rtReason:'Missing required tool: fetch_page',ctReason:'Output contains 5 items',rjReason:'List missing OpenTelemetry and NorthStar',output:'1. LangSmith 2. W&B 3. Helicone 4. Arize 5. PromptLayer'},
+  {id:'case_003',input:'Fetch anthropic.com and summarize',rt:'pass',ct:'fail',rj:'pass',rtReason:'Called fetch_page correctly',ctReason:'Expected {"summary":... but got plain text',rjReason:'Accurate and concise summary',output:'Anthropic is an AI safety company focused on Claude. Homepage highlights safety research.'},
+  {id:'case_004',input:'List tool calls in session sess_b7e204',rt:'pass',ct:'pass',rj:'pass',rtReason:'All required tools invoked',ctReason:'Output matches expected pattern',rjReason:'Complete and correct list',output:'{"tool_calls":["web_search","fetch_page","write_summary"],"count":3}'},
+  {id:'case_005',input:'What is the capital of France?',rt:'pass',ct:'pass',rj:'pass',rtReason:'No tools required; skipped correctly',ctReason:'"Paris" found in output',rjReason:'Correct and direct answer',output:'The capital of France is Paris.'},
+  {id:'case_006',input:'Summarize the NorthStar docs page',rt:'fail',ct:'fail',rj:'fail',rtReason:'fetch_page not called',ctReason:'"northstar" not in output',rjReason:'Agent hallucinated instead of fetching',output:'NorthStar is a tracing platform. It supports sessions and traces. (hallucinated)'},
+];
+
+let expandedRow = null;
+
+function renderResults() {
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  resultData.forEach((r,i) => {
+    const overall = [r.rt,r.ct,r.rj].every(v=>v==='pass') ? 'pass' : 'fail';
+    const tr = document.createElement('tr');
+    tr.className = 'rt-data-row';
+    tr.dataset.overall = overall;
+    tr.innerHTML = `
+      <td class="case-id">${r.id}</td>
+      <td class="case-input-cell" title="${r.input}">${r.input}</td>
+      <td>${vbadge(r.rt)}</td>
+      <td>${vbadge(r.ct)}</td>
+      <td>${vbadge(r.rj)}</td>
+      <td style="color:var(--color-text-tertiary);font-size:13px;text-align:center"><i class="ti ti-chevron-down" aria-hidden="true"></i></td>`;
+    tr.onclick = () => toggleRow(tr, r);
+    tbody.appendChild(tr);
+    const expTr = document.createElement('tr');
+    expTr.className = 'exp-row';
+    expTr.id = 'exp-'+i;
+    expTr.innerHTML = `<td colspan="6"><div class="exp-inner" id="exp-inner-${i}">
+      <div class="exp-io">
+        <div><div class="io-lbl">Input</div><div class="io-val">${r.input}</div></div>
+        <div><div class="io-lbl">Output</div><div class="io-val">${r.output}</div></div>
+      </div>
+      <div class="io-lbl" style="margin-bottom:5px">Grader breakdown</div>
+      <div class="grader-breakdown">
+        <div class="gb-row"><div class="gb-icon gi-tool"><i class="ti ti-checks" style="font-size:11px" aria-hidden="true"></i></div><span class="gb-name">RequiredTools</span>${vbadge(r.rt)}<span class="gb-reason" style="margin-left:6px">${r.rtReason}</span></div>
+        <div class="gb-row"><div class="gb-icon gi-output"><i class="ti ti-text-size" style="font-size:11px" aria-hidden="true"></i></div><span class="gb-name">Contains</span>${vbadge(r.ct)}<span class="gb-reason" style="margin-left:6px">${r.ctReason}</span></div>
+        <div class="gb-row"><div class="gb-icon gi-llm"><i class="ti ti-sparkles" style="font-size:11px" aria-hidden="true"></i></div><span class="gb-name">RubricJudge</span>${vbadge(r.rj)}<span class="gb-reason" style="margin-left:6px">${r.rjReason}</span></div>
+      </div>
+    </div></td>`;
+    tbody.appendChild(expTr);
+  });
+}
+
+function vbadge(v) {
+  if(v==='pass') return '<span class="vbadge vpass"><i class="ti ti-check" style="font-size:11px" aria-hidden="true"></i>Pass</span>';
+  if(v==='fail') return '<span class="vbadge vfail"><i class="ti ti-x" style="font-size:11px" aria-hidden="true"></i>Fail</span>';
+  return '<span class="vbadge vna">—</span>';
+}
+
+function toggleRow(tr, r) {
+  const idx = Array.from(document.querySelectorAll('.rt-data-row')).indexOf(tr);
+  const inner = document.getElementById('exp-inner-'+idx);
+  if(!inner) return;
+  const isOpen = inner.classList.contains('open');
+  document.querySelectorAll('.exp-inner').forEach(e => e.classList.remove('open'));
+  document.querySelectorAll('.rt-data-row').forEach(r => r.classList.remove('exp-open'));
+  if(!isOpen){ inner.classList.add('open'); tr.classList.add('exp-open'); }
+}
+
+function setFilter(el, type) {
+  document.querySelectorAll('.fpill').forEach(p => p.classList.remove('on','on-fail'));
+  if(type==='fail') el.classList.add('on-fail'); else el.classList.add('on');
+  document.querySelectorAll('.rt-data-row').forEach(tr => {
+    const overall = tr.dataset.overall;
+    tr.style.display = (type==='all' || overall===type) ? '' : 'none';
+    const expTr = tr.nextElementSibling;
+    if(expTr) expTr.style.display = (type==='all' || overall===type) ? '' : 'none';
+  });
+}
+
+function showResults() {
+  document.getElementById('page-builder').classList.remove('active');
+  document.getElementById('page-results').classList.add('active');
+  renderResults();
+}
+
+function showBuilder() {
+  document.getElementById('page-results').classList.remove('active');
+  document.getElementById('page-builder').classList.add('active');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  ['RequiredTools','Contains','RubricJudge'].forEach(name => {
+    const d = graderDefs[name];
+    activeGraders[name] = true;
+    renderActiveGrader(name);
+  });
+  if(document.querySelector('#ag-RubricJudge textarea')) {
+    document.querySelector('#ag-RubricJudge textarea').value = 'Grade PASS if the agent directly answers the user\'s question, cites sources when web_search was used, and avoids hallucination. Return JSON: {"result":"pass"|"fail","reason":"..."}';
+  }
+  syncPanel();
+});
+</script>

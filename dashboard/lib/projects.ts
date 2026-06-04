@@ -1,6 +1,8 @@
 export type ProjectId = string & { readonly __brand: 'ProjectId' }
 export type BackendProjectId = string & { readonly __brand: 'BackendProjectId' }
 
+export const DEV_BACKEND_PROJECTS_COOKIE = 'northstar.dev-backend-projects'
+
 export interface Project {
   id: ProjectId
   backendId: BackendProjectId | null
@@ -33,7 +35,7 @@ export function parseBackendProjectId(value: string): BackendProjectId | null {
     : null
 }
 
-export function projectHref(projectId: ProjectId, section: 'traces' | 'sessions' | 'settings' = 'traces') {
+export function projectHref(projectId: ProjectId, section: 'traces' | 'sessions' | 'settings' | 'evals' | 'datasets' = 'traces') {
   return `/projects/${projectId}/${section}`
 }
 
@@ -46,11 +48,13 @@ export function traceHref(projectId: ProjectId, traceId: string) {
 }
 
 export function projectSwitchHref(pathname: string, projectId: ProjectId) {
-  const match = pathname.match(/^\/projects\/[^/]+\/(traces|sessions|settings)(\/.*)?$/)
+  const match = pathname.match(/^\/projects\/[^/]+\/(traces|sessions|settings|evals|datasets)(\/.*)?$/)
   const section = match?.[1]
   const isDetailPage = Boolean(match?.[2])
 
   if (isDetailPage || !section) return projectHref(projectId)
-  if (section === 'sessions' || section === 'settings') return projectHref(projectId, section)
+  if (section === 'sessions' || section === 'settings' || section === 'evals' || section === 'datasets') {
+    return projectHref(projectId, section)
+  }
   return projectHref(projectId)
 }

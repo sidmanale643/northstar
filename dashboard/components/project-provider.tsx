@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import {
+  DEV_BACKEND_PROJECTS_COOKIE,
   DEMO_PROJECT,
   parseBackendProjectId,
   parseProjectId,
@@ -44,7 +45,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const storedState = parseStoredState(window.localStorage.getItem(STORAGE_KEY))
     if (storedState) {
-      setState(storedState)
+      setState(persistState(storedState))
     } else {
       persistState(defaultState)
     }
@@ -142,6 +143,14 @@ function createProjectId() {
 
 function persistState(state: ProjectState) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  if (process.env.NODE_ENV !== 'production') {
+    const backendProjects = Object.fromEntries(
+      state.projects.flatMap((project) =>
+        project.backendId ? [[project.id, project.backendId]] : []
+      )
+    )
+    document.cookie = `${DEV_BACKEND_PROJECTS_COOKIE}=${encodeURIComponent(JSON.stringify(backendProjects))}; Path=/; SameSite=Lax`
+  }
   return state
 }
 

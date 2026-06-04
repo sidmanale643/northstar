@@ -1,10 +1,10 @@
 import { format } from 'date-fns'
 import { ChevronDown, Wrench } from 'lucide-react'
 import { JsonViewer } from '@/components/json-viewer'
-import { Tables } from '@/lib/supabase/types'
+import type { DashboardToolCall } from '@/lib/supabase/types'
 
 interface ToolCallDetailProps {
-  toolCall: Tables<'tool_calls'>
+  toolCall: DashboardToolCall
   index: number
 }
 
@@ -27,9 +27,7 @@ export function ToolCallDetail({ toolCall, index }: ToolCallDetailProps) {
         </div>
         <div>
           <div className="mb-1.5 ns-label">Output</div>
-          <pre className="min-h-[76px] max-h-[260px] overflow-auto rounded-md bg-secondary p-3 font-mono text-[11px] leading-5 text-muted-foreground">
-            <code>{toolCall.output || 'No output captured.'}</code>
-          </pre>
+          <JsonViewer data={toolCall.output ?? 'No output captured.'} className="h-full" />
         </div>
       </div>
     </details>

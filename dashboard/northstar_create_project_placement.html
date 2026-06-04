@@ -1,0 +1,100 @@
+
+<style>
+  .ns-wrap { font-family: var(--font-sans); padding: 1.5rem 0; display: flex; flex-direction: column; gap: 2rem; }
+  .option-label { font-size: 12px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 10px; }
+  .rec-badge { display: inline-block; background: #E1F5EE; color: #0F6E56; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 4px; margin-left: 8px; vertical-align: middle; }
+  .ns-header { margin-bottom: 12px; }
+  .ns-title { font-size: 18px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 2px; }
+  .ns-sub { font-size: 13px; color: var(--color-text-secondary); margin: 0; }
+  .row-label { font-size: 12px; color: var(--color-text-secondary); margin: 0 0 8px; }
+  .card-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .proj-card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 8px; padding: 12px; }
+  .proj-card.selected { border-color: #1D9E75; border-width: 1.5px; }
+  .proj-icon { width: 28px; height: 28px; background: #E1F5EE; border-radius: 6px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .proj-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); margin: 0 0 2px; }
+  .proj-id { font-size: 11px; color: var(--color-text-secondary); margin: 0 0 8px; font-family: var(--font-mono); }
+  .proj-status { font-size: 11px; color: var(--color-text-secondary); }
+  .create-card { background: var(--color-background-primary); border: 1.5px dashed var(--color-border-secondary); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px; cursor: pointer; }
+  .create-card-text { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); }
+  .inline-form { background: var(--color-background-secondary); border: 0.5px solid var(--color-border-tertiary); border-radius: 10px; padding: 14px 16px; margin-top: 14px; }
+  .form-row { display: flex; align-items: center; gap: 10px; }
+  .form-label { font-size: 13px; color: var(--color-text-secondary); white-space: nowrap; }
+  .form-input { flex: 1; border: 0.5px solid var(--color-border-secondary); border-radius: 6px; background: var(--color-background-primary); padding: 6px 10px; font-size: 13px; color: var(--color-text-primary); font-family: var(--font-mono); }
+  .form-btn { background: #1D9E75; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+  .divider { height: 0.5px; background: var(--color-border-tertiary); margin: 1.5rem 0; }
+  .header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .header-meta { font-size: 13px; color: var(--color-text-secondary); }
+  .btn-add { display: flex; align-items: center; gap: 6px; background: #1D9E75; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 13px; font-weight: 500; cursor: pointer; }
+</style>
+<div class="ns-wrap">
+
+  <div>
+    <p class="option-label">Option A — inline as a "+" card <span class="rec-badge">recommended</span></p>
+    <div class="ns-header">
+      <div class="header-row">
+        <div>
+          <p class="ns-title">Projects</p>
+          <p class="ns-sub">Open a project to inspect its sessions, traces, and ingestion settings.</p>
+        </div>
+        <span class="header-meta">2 total</span>
+      </div>
+    </div>
+    <p class="row-label">Your projects</p>
+    <div class="card-grid">
+      <div class="proj-card selected">
+        <div class="proj-icon"><i class="ti ti-layout-grid" style="font-size:14px;color:#1D9E75;" aria-hidden="true"></i></div>
+        <p class="proj-name">research-agent</p>
+        <p class="proj-id">proj_a3f9c1d8e27b</p>
+        <p class="proj-status"><i class="ti ti-radio" style="font-size:12px;" aria-hidden="true"></i> ready for sessions</p>
+      </div>
+      <div class="proj-card">
+        <div class="proj-icon"><i class="ti ti-layout-grid" style="font-size:14px;color:#1D9E75;" aria-hidden="true"></i></div>
+        <p class="proj-name">terminus-cli</p>
+        <p class="proj-id">proj_e6dc44e740c5</p>
+        <p class="proj-status"><i class="ti ti-radio" style="font-size:12px;" aria-hidden="true"></i> ready for sessions</p>
+      </div>
+      <div class="create-card">
+        <i class="ti ti-plus" style="font-size:20px;color:var(--color-text-secondary);" aria-hidden="true"></i>
+        <span class="create-card-text">New project</span>
+      </div>
+    </div>
+    <div class="inline-form">
+      <div class="form-row">
+        <span class="form-label">Project name</span>
+        <input class="form-input" value="customer-support-agent" readonly />
+        <button class="form-btn">+ Create</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div>
+    <p class="option-label">Option B — button in the header bar</p>
+    <div class="ns-header">
+      <div class="header-row">
+        <div>
+          <p class="ns-title">Projects</p>
+          <p class="ns-sub">Open a project to inspect its sessions, traces, and ingestion settings.</p>
+        </div>
+        <button class="btn-add"><i class="ti ti-plus" style="font-size:15px;" aria-hidden="true"></i> New project</button>
+      </div>
+    </div>
+    <p class="row-label">Your projects · 2 total</p>
+    <div class="card-grid">
+      <div class="proj-card selected">
+        <div class="proj-icon"><i class="ti ti-layout-grid" style="font-size:14px;color:#1D9E75;" aria-hidden="true"></i></div>
+        <p class="proj-name">research-agent</p>
+        <p class="proj-id">proj_a3f9c1d8e27b</p>
+        <p class="proj-status"><i class="ti ti-radio" style="font-size:12px;" aria-hidden="true"></i> ready for sessions</p>
+      </div>
+      <div class="proj-card">
+        <div class="proj-icon"><i class="ti ti-layout-grid" style="font-size:14px;color:#1D9E75;" aria-hidden="true"></i></div>
+        <p class="proj-name">terminus-cli</p>
+        <p class="proj-id">proj_e6dc44e740c5</p>
+        <p class="proj-status"><i class="ti ti-radio" style="font-size:12px;" aria-hidden="true"></i> ready for sessions</p>
+      </div>
+    </div>
+  </div>
+
+</div>

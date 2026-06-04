@@ -1,67 +1,266 @@
-import { format } from 'date-fns'
-import { Activity, ArrowLeft, Clock3, Layers3, Wrench } from 'lucide-react'
-import Link from 'next/link'
+import { Brain, DollarSign, Layers3, Wrench } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { TraceTimeline } from '@/components/trace-timeline'
 import { ProjectContextLabel } from '@/components/project-context-label'
-import { createClient } from '@/lib/supabase/server'
-import { Tables } from '@/lib/supabase/types'
-import { DEMO_PROJECT_ID, projectHref } from '@/lib/projects'
+import { CostStat } from '@/components/cost-stat'
+import { cn } from '@/lib/utils'
+import {
+  attachToolCalls,
+  getDashboardBackendProjectId,
+  getDashboardSession,
+  getDashboardSessionCost,
+  listDashboardTraces,
+  listSessionToolCalls,
+} from '@/lib/supabase/dashboard'
+import { parseProjectId } from '@/lib/projects'
 
 export const dynamic = 'force-dynamic'
 
-type TraceWithCalls = Tables<'traces'> & { tool_calls: Tables<'tool_calls'>[] | null }
-
 export default async function SessionPage({ params }: { params: { projectId: string; id: string } }) {
-  if (params.projectId !== DEMO_PROJECT_ID) notFound()
+  const projectId = parseProjectId(params.projectId)
+  if (!projectId) notFound()
 
-  const supabase = createClient()
-  const { data: sessionData } = await supabase
-    .from('sessions')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+  const backendProjectId = getDashboardBackendProjectId(projectId)
+  if (!backendProjectId) notFound()
 
-  if (!sessionData) notFound()
+  const [session, traceRows, toolCallRows, sessionCost] = await Promise.all([
+    getDashboardSession(backendProjectId, params.id),
+    listDashboardTraces(backendProjectId, params.id),
+    listSessionToolCalls(backendProjectId, params.id),
+    getDashboardSessionCost(backendProjectId, params.id),
+  ])
 
-  const session = sessionData as Tables<'sessions'>
-  const { data: tracesData } = await supabase
-    .from('traces')
-    .select('*, tool_calls(*)')
-    .eq('session_id', params.id)
-    .order('created_at', { ascending: true })
-  const traces = (tracesData ?? []) as TraceWithCalls[]
-  const toolCalls = traces.reduce((total, trace) => total + (trace.tool_calls?.length ?? 0), 0)
+  if (!session) notFound()
+
+  const traces = attachToolCalls(traceRows, toolCallRows)
+  const totalToolCalls = toolCallRows.length
+  const llmCallCount = traces.length
+
+  const sortedTraces = [...traces].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
+  const firstErroredIndex = sortedTraces.findIndex(
+    (t) => t.status === 'error' || t.status === 'failed'
+  )
+  const errorCount = firstErroredIndex >= 0 ? sortedTraces.length - firstErroredIndex : 0
+  const failedToolCallCount = toolCallRows.filter((toolCall) => toolCall.error !== null).length
+  const firstErroredStatus = firstErroredIndex >= 0 ? sortedTraces[firstErroredIndex].status : null
+  const firstErroredTraceNumber = firstErroredIndex >= 0 ? firstErroredIndex + 1 : null
+
+  const sessionDurationMs = session.ended_at
+    ? new Date(session.ended_at).getTime() - new Date(session.created_at).getTime()
+    : null
+
+  const isActive = !session.ended_at
+  const badgeTone: 'error' | 'active' | 'completed' =
+    errorCount > 0 ? 'error' : isActive ? 'active' : 'completed'
 
   return (
     <div className="ns-enter space-y-5">
-      <Link href={projectHref(DEMO_PROJECT_ID, 'sessions')} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="h-3 w-3" />
-        All sessions
-      </Link>
-
       <div>
-        <ProjectContextLabel section="session" />
-        <div className="font-mono text-[11px] text-muted-foreground">sess_{session.id}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold tracking-[-0.02em]">Session trace sequence</h1>
-          <span className={`ns-pill ${session.ended_at ? '' : 'border-[#97c459] bg-[#eaf3de] text-[#3b6d11]'}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${session.ended_at ? 'bg-[var(--ns-faint)]' : 'bg-[#639922]'}`} />
-            {session.ended_at ? 'ended' : 'active'}
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1"><Clock3 className="h-3 w-3" />{format(new Date(session.created_at), 'PPpp')}</span>
-          <span className="flex items-center gap-1"><Layers3 className="h-3 w-3" />{traces.length} traces</span>
-          <span className="flex items-center gap-1"><Wrench className="h-3 w-3" />{toolCalls} tool calls</span>
-          <span className="flex items-center gap-1 text-primary"><Activity className="h-3 w-3" />realtime</span>
+        <ProjectContextLabel section={`Sessions / sess_${session.id.slice(0, 8)}`} />
+
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-[22px] font-medium tracking-[-0.01em] text-foreground">
+              Session: sess_{session.id.slice(0, 8)}
+            </h1>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Trace-by-trace view of all LLM calls, tool uses, and events in this session.
+            </p>
+          </div>
+          <SessionStatusBadge tone={badgeTone} durationMs={sessionDurationMs} />
         </div>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Stat
+          label="Traces"
+          value={llmCallCount}
+          detail="in this session"
+          icon={Layers3}
+        />
+        <Stat
+          label="LLM calls"
+          value={llmCallCount}
+          detail="—"
+          icon={Brain}
+        />
+        <Stat
+          label="Tool calls"
+          value={totalToolCalls}
+          detail={
+            failedToolCallCount > 0
+              ? `${failedToolCallCount} failed`
+              : `${totalToolCalls} succeeded`
+          }
+          icon={Wrench}
+          tone={failedToolCallCount > 0 ? 'warn' : 'ok'}
+        />
+        <CostStat
+          label="Cost"
+          cost={sessionCost?.cost_usd ?? 0}
+          inputTokens={sessionCost?.input_tokens}
+          outputTokens={sessionCost?.output_tokens}
+          detail={
+            sessionCost?.model_call_count
+              ? `${sessionCost.model_call_count} model call${sessionCost.model_call_count === 1 ? '' : 's'}`
+              : 'no model calls recorded'
+          }
+          icon={DollarSign}
+        />
+        <Stat
+          label="Error"
+          value={
+            errorCount > 0 && firstErroredStatus
+              ? capitalizeStatus(firstErroredStatus)
+              : 'No errors'
+          }
+          detail={
+            errorCount > 0 && firstErroredTraceNumber
+              ? `at trace #${firstErroredTraceNumber}`
+              : 'all traces completed cleanly'
+          }
+          icon={Brain}
+          tone={errorCount > 0 ? 'error' : 'ok'}
+          size={errorCount > 0 ? 'sm' : 'md'}
+        />
+      </div>
+
       <section>
-        <div className="mb-2.5 ns-label">Captured sequence</div>
-        <TraceTimeline projectId={DEMO_PROJECT_ID} traces={traces} sessionId={session.id} />
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Trace timeline
+          </h2>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <LegendPill tone="llm" label="LLM call" />
+            <LegendPill tone="event" label="Event" />
+            <LegendPill tone="error" label="Error" />
+          </div>
+        </div>
+        <TraceTimeline
+          projectId={projectId}
+          traces={traces}
+          sessionStart={session.created_at}
+        />
       </section>
     </div>
   )
+}
+
+function Stat({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone = 'default',
+  size = 'md',
+}: {
+  label: string
+  value: string | number
+  detail: string
+  icon: typeof Brain
+  tone?: 'default' | 'ok' | 'warn' | 'error'
+  size?: 'sm' | 'md'
+}) {
+  const numClass = cn(
+    'mt-2 font-mono font-medium',
+    size === 'sm' ? 'text-[14px]' : tone === 'ok' && typeof value === 'string' ? 'text-[20px]' : 'text-[24px]'
+  )
+
+  return (
+    <div className="rounded-md bg-[var(--ns-panel)] p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+          {label}
+        </div>
+        <Icon
+          className={cn(
+            'h-3.5 w-3.5',
+            tone === 'error' && 'text-[#a32d2d]',
+            tone === 'warn' && 'text-[#ba7517]',
+            tone === 'ok' && 'text-primary',
+            tone === 'default' && 'text-muted-foreground'
+          )}
+        />
+      </div>
+      <div
+        className={cn(
+          numClass,
+          tone === 'error' && 'text-[#a32d2d]',
+          tone === 'ok' && 'text-primary',
+          tone === 'default' && 'text-foreground'
+        )}
+      >
+        {value}
+      </div>
+      <div className="mt-0.5 text-[12px] text-muted-foreground">{detail}</div>
+    </div>
+  )
+}
+
+function SessionStatusBadge({
+  tone,
+  durationMs,
+}: {
+  tone: 'error' | 'active' | 'completed'
+  durationMs: number | null
+}) {
+  if (tone === 'error') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
+        style={{ background: '#fcebeb', color: '#a32d2d' }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#a32d2d' }} />
+        errored
+        {durationMs !== null && ` · ${formatDuration(durationMs)}`}
+      </span>
+    )
+  }
+  if (tone === 'active') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-medium"
+        style={{ background: '#e6f1fb', color: '#0c447c' }}
+      >
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#378add' }} />
+        active
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#e1f5ee] px-2.5 py-1 text-[12px] font-medium text-[#0f6e56]">
+      <span className="h-1.5 w-1.5 rounded-full bg-[#1d9e75]" />
+      completed
+      {durationMs !== null && ` · ${formatDuration(durationMs)}`}
+    </span>
+  )
+}
+
+function LegendPill({ tone, label }: { tone: 'llm' | 'tool' | 'event' | 'error'; label: string }) {
+  const styleByTone: Record<typeof tone, React.CSSProperties> = {
+    llm: { background: '#eeedfe', color: '#3c3489' },
+    tool: { background: '#e6f1fb', color: '#0c447c' },
+    event: { background: '#e1f5ee', color: '#0f6e56' },
+    error: { background: '#fcebeb', color: '#a32d2d' },
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+      style={styleByTone[tone]}
+    >
+      {label}
+    </span>
+  )
+}
+
+function capitalizeStatus(status: string): string {
+  return status.charAt(0).toUpperCase() + status.slice(1)
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.round(ms / 1000)}s`
 }

@@ -1,0 +1,356 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{display:grid;grid-template-columns:300px 1fr;border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;background:var(--color-background-primary);min-height:620px}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:0 14px;height:44px;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.topbar-id{font-size:11.5px;font-family:var(--font-mono);color:var(--color-text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar-nav{display:flex;gap:0;margin-right:8px}
+.tnav{font-size:12px;padding:5px 11px;color:var(--color-text-secondary);cursor:pointer;border-radius:var(--border-radius-md)}
+.tnav:hover{background:var(--color-background-primary);color:var(--color-text-primary)}
+.tnav.active{background:var(--color-background-primary);color:var(--color-text-primary);font-weight:500}
+.iBtn{width:28px;height:28px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px}
+.iBtn:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+
+.tree-panel{border-right:0.5px solid var(--color-border-tertiary);overflow-y:auto;background:var(--color-background-primary)}
+.tree-item{display:flex;align-items:flex-start;gap:0;padding:0;cursor:pointer;border-left:2px solid transparent}
+.tree-item:hover .ti-inner{background:var(--color-background-secondary)}
+.tree-item.selected{border-left-color:#1D9E75}
+.tree-item.selected .ti-inner{background:#E1F5EE}
+.ti-indent{flex-shrink:0}
+.ti-inner{flex:1;display:flex;align-items:center;gap:7px;padding:7px 10px 7px 0;min-width:0}
+.ti-icon{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:12px}
+.ic-agent{background:#E1F5EE;color:#085041}
+.ic-llm{background:#EEEDFE;color:#3C3489}
+.ic-tool{background:#FAEEDA;color:#633806}
+.ic-eval{background:#EAF3DE;color:#27500A}
+.ti-label{flex:1;min-width:0}
+.ti-name{font-size:12px;font-weight:500;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ti-meta{font-size:11px;color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.ti-chevron{font-size:13px;color:var(--color-text-tertiary);flex-shrink:0;transition:transform 0.15s}
+.ti-chevron.open{transform:rotate(180deg)}
+
+.detail-panel{overflow-y:auto;display:flex;flex-direction:column}
+.detail-header{padding:14px 16px 10px;border-bottom:0.5px solid var(--color-border-tertiary)}
+.detail-breadcrumb{font-size:11px;color:var(--color-text-tertiary);margin-bottom:4px}
+.detail-title{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.detail-title-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:15px}
+.detail-title-name{font-size:15px;font-weight:500;color:var(--color-text-primary)}
+.detail-actions{display:flex;gap:6px;flex-wrap:wrap}
+.dBtn{font-size:11.5px;padding:5px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;display:flex;align-items:center;gap:4px}
+.dBtn:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+.dBtn i{font-size:13px}
+
+.detail-body{padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.section{border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);overflow:hidden}
+.section-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);cursor:pointer}
+.section-hdr-left{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--color-text-secondary)}
+.section-hdr-left i{font-size:14px;color:#1D9E75}
+.section-body{padding:12px}
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.metric{display:flex;flex-direction:column;gap:2px}
+.metric-label{font-size:11px;color:var(--color-text-tertiary)}
+.metric-val{font-size:17px;font-weight:500;color:var(--color-text-primary);font-family:var(--font-mono)}
+.scores-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.score-item{display:flex;flex-direction:column;gap:3px}
+.score-label{font-size:11px;color:var(--color-text-tertiary)}
+.score-val{font-size:16px;font-weight:500;color:var(--color-text-primary);font-family:var(--font-mono)}
+.score-bar-wrap{height:3px;background:var(--color-background-secondary);border-radius:99px;overflow:hidden;margin-top:2px}
+.score-bar{height:100%;border-radius:99px}
+.bar-good{background:#1D9E75}
+.bar-warn{background:#EF9F27}
+.bar-bad{background:#E24B4A}
+.tag-row{display:flex;gap:6px;flex-wrap:wrap;padding:10px 12px}
+.ns-tag{font-size:11px;font-family:var(--font-mono);padding:3px 8px;border-radius:99px;background:var(--color-background-secondary);color:var(--color-text-secondary);border:0.5px solid var(--color-border-tertiary)}
+.io-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.io-block{display:flex;flex-direction:column;gap:4px}
+.io-label{font-size:10px;text-transform:uppercase;letter-spacing:0.07em;color:var(--color-text-tertiary);font-weight:500}
+.io-val{font-size:11px;font-family:var(--font-mono);color:var(--color-text-secondary);background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:8px;white-space:pre-wrap;word-break:break-all;max-height:80px;overflow-y:auto}
+</style>
+
+<h2 class="sr-only">NorthStar trace inspector with a span tree on the left and a metrics and scores detail panel on the right.</h2>
+
+<div class="wrap">
+  <div class="topbar">
+    <button class="iBtn" aria-label="up"><i class="ti ti-arrow-up" aria-hidden="true"></i></button>
+    <button class="iBtn" aria-label="down"><i class="ti ti-arrow-down" aria-hidden="true"></i></button>
+    <span class="topbar-id">trace · 7f2ac19d-4e3b-41a0-b950-fc76329947d4</span>
+    <div class="topbar-nav">
+      <div class="tnav active" onclick="setTab(this,'trace')"><i class="ti ti-list-tree" style="font-size:13px;margin-right:3px" aria-hidden="true"></i>Trace</div>
+      <div class="tnav" onclick="setTab(this,'timeline')"><i class="ti ti-timeline" style="font-size:13px;margin-right:3px" aria-hidden="true"></i>Timeline</div>
+      <div class="tnav" onclick="setTab(this,'thread')"><i class="ti ti-messages" style="font-size:13px;margin-right:3px" aria-hidden="true"></i>Thread</div>
+    </div>
+    <button class="iBtn" aria-label="copy"><i class="ti ti-copy" aria-hidden="true"></i></button>
+    <button class="iBtn" aria-label="close"><i class="ti ti-x" aria-hidden="true"></i></button>
+  </div>
+
+  <div class="tree-panel" id="tree-panel">
+    <div class="tree-item selected" onclick="selectSpan(this,'root')" style="border-left-color:#1D9E75">
+      <div class="ti-indent" style="width:8px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-agent"><i class="ti ti-brackets-curly" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">agentRun</div>
+          <div class="ti-meta">2,341ms · 1,847 tok</div>
+        </div>
+        <i class="ti ti-chevron-down ti-chevron open" aria-hidden="true"></i>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'llm1')">
+      <div class="ti-indent" style="width:22px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-llm"><i class="ti ti-sparkles" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">llmCall</div>
+          <div class="ti-meta">660ms · 874 tok</div>
+        </div>
+        <i class="ti ti-chevron-down ti-chevron open" aria-hidden="true"></i>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'model1')">
+      <div class="ti-indent" style="width:38px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-llm" style="background:#EEEDFE"><i class="ti ti-sparkles" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">claude-sonnet-4</div>
+          <div class="ti-meta">660ms · 874 tok</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'tool1')">
+      <div class="ti-indent" style="width:22px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-tool"><i class="ti ti-world-search" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">web_search</div>
+          <div class="ti-meta">560ms</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'tool2')">
+      <div class="ti-indent" style="width:22px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-tool"><i class="ti ti-file-download" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">fetch_page</div>
+          <div class="ti-meta">420ms</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'llm2')">
+      <div class="ti-indent" style="width:22px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-llm"><i class="ti ti-sparkles" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">llmCall</div>
+          <div class="ti-meta">460ms · 973 tok</div>
+        </div>
+        <i class="ti ti-chevron-down ti-chevron open" aria-hidden="true"></i>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'model2')">
+      <div class="ti-indent" style="width:38px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-llm" style="background:#EEEDFE"><i class="ti ti-sparkles" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">claude-sonnet-4</div>
+          <div class="ti-meta">460ms · 973 tok</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'tool3')">
+      <div class="ti-indent" style="width:22px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-tool"><i class="ti ti-pencil" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">write_summary</div>
+          <div class="ti-meta">150ms</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tree-item" onclick="selectSpan(this,'eval1')">
+      <div class="ti-indent" style="width:22px"></div>
+      <div class="ti-inner">
+        <div class="ti-icon ic-eval"><i class="ti ti-percentage" aria-hidden="true"></i></div>
+        <div class="ti-label">
+          <div class="ti-name">quality_eval</div>
+          <div class="ti-meta">91ms</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="detail-panel">
+    <div class="detail-header">
+      <div class="detail-breadcrumb" id="detail-bc">Root span</div>
+      <div class="detail-title">
+        <div class="ti-icon ic-agent detail-title-icon" id="detail-icon"><i class="ti ti-brackets-curly" aria-hidden="true"></i></div>
+        <span class="detail-title-name" id="detail-name">agentRun</span>
+      </div>
+      <div class="detail-actions">
+        <button class="dBtn"><i class="ti ti-database" aria-hidden="true"></i>Dataset</button>
+        <button class="dBtn"><i class="ti ti-player-play" aria-hidden="true"></i>Replay</button>
+        <button class="dBtn"><i class="ti ti-flag" aria-hidden="true"></i>Flag for review</button>
+        <button class="dBtn"><i class="ti ti-tag" aria-hidden="true"></i>Tag</button>
+      </div>
+    </div>
+
+    <div class="detail-body" id="detail-body">
+
+      <div class="section">
+        <div class="section-hdr">
+          <div class="section-hdr-left"><i class="ti ti-chart-bar" aria-hidden="true"></i>Metrics</div>
+          <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+        </div>
+        <div class="section-body">
+          <div class="metrics-grid">
+            <div class="metric"><span class="metric-label">Start</span><span class="metric-val" style="font-size:13px">Jun 3 · 14:22:07</span></div>
+            <div class="metric"><span class="metric-label">Duration</span><span class="metric-val">2,341ms</span></div>
+            <div class="metric"><span class="metric-label">Total tokens</span><span class="metric-val">1,847</span></div>
+            <div class="metric"><span class="metric-label">Prompt tokens</span><span class="metric-val">874</span></div>
+            <div class="metric"><span class="metric-label">Completion tokens</span><span class="metric-val">973</span></div>
+            <div class="metric"><span class="metric-label">Estimated cost</span><span class="metric-val">$0.006</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-hdr">
+          <div class="section-hdr-left"><i class="ti ti-percentage" aria-hidden="true"></i>Scores</div>
+          <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+        </div>
+        <div class="section-body">
+          <div class="scores-grid">
+            <div class="score-item">
+              <span class="score-label">Faithfulness</span>
+              <span class="score-val">91.2%</span>
+              <div class="score-bar-wrap"><div class="score-bar bar-good" style="width:91%"></div></div>
+            </div>
+            <div class="score-item">
+              <span class="score-label">Custom scorer</span>
+              <span class="score-val">83.3%</span>
+              <div class="score-bar-wrap"><div class="score-bar bar-good" style="width:83%"></div></div>
+            </div>
+            <div class="score-item">
+              <span class="score-label">Relevance</span>
+              <span class="score-val">93.3%</span>
+              <div class="score-bar-wrap"><div class="score-bar bar-good" style="width:93%"></div></div>
+            </div>
+            <div class="score-item">
+              <span class="score-label">Completeness</span>
+              <span class="score-val">76.3%</span>
+              <div class="score-bar-wrap"><div class="score-bar bar-warn" style="width:76%"></div></div>
+            </div>
+            <div class="score-item">
+              <span class="score-label">User helpful</span>
+              <span class="score-val" style="color:var(--color-text-danger)">0%</span>
+              <div class="score-bar-wrap"><div class="score-bar bar-bad" style="width:1%"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-hdr">
+          <div class="section-hdr-left"><i class="ti ti-tags" aria-hidden="true"></i>Tags</div>
+          <button class="iBtn" style="width:22px;height:22px;font-size:12px" aria-label="add tag"><i class="ti ti-plus" aria-hidden="true"></i></button>
+        </div>
+        <div class="tag-row">
+          <span class="ns-tag">prod</span>
+          <span class="ns-tag">sess_a3f9c1</span>
+          <span class="ns-tag">model:sonnet-4</span>
+          <span class="ns-tag">run:3</span>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-hdr">
+          <div class="section-hdr-left"><i class="ti ti-arrow-right-left" aria-hidden="true"></i>Inputs / outputs</div>
+          <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+        </div>
+        <div class="section-body">
+          <div class="io-grid">
+            <div class="io-block">
+              <span class="io-label">Input</span>
+              <div class="io-val">{"task": "Summarize recent LLM observability practices", "max_results": 5}</div>
+            </div>
+            <div class="io-block">
+              <span class="io-label">Output</span>
+              <div class="io-val">{"summary": "Key practices include distributed tracing with OpenTelemetry, token-level cost tracking, and eval harnesses..."}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-hdr">
+          <div class="section-hdr-left"><i class="ti ti-user-check" aria-hidden="true"></i>Human review</div>
+          <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+        </div>
+        <div class="section-body">
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:11.5px;color:var(--color-text-secondary);min-width:90px">Classification</span>
+              <span style="font-size:11.5px;color:var(--color-text-tertiary);font-style:italic">Not yet reviewed</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:11.5px;color:var(--color-text-secondary);min-width:90px">Assigned to</span>
+              <span style="font-size:11.5px;color:var(--color-text-tertiary);font-style:italic">Unassigned</span>
+            </div>
+            <div style="margin-top:4px">
+              <button class="dBtn"><i class="ti ti-user-plus" aria-hidden="true"></i>Assign to me</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const spans = {
+  root:{bc:'Root span',name:'agentRun',icon:'ti-brackets-curly',cls:'ic-agent',dur:'2,341ms',tok:'1,847 tok',cost:'$0.006',scores:true,io:true},
+  llm1:{bc:'agentRun › llmCall',name:'llmCall',icon:'ti-sparkles',cls:'ic-llm',dur:'660ms',tok:'874 tok',cost:'$0.002',scores:false,io:true},
+  model1:{bc:'agentRun › llmCall › claude-sonnet-4',name:'claude-sonnet-4',icon:'ti-sparkles',cls:'ic-llm',dur:'660ms',tok:'874 tok',cost:'$0.002',scores:false,io:true},
+  tool1:{bc:'agentRun › web_search',name:'web_search',icon:'ti-world-search',cls:'ic-tool',dur:'560ms',tok:'—',cost:'—',scores:false,io:true},
+  tool2:{bc:'agentRun › fetch_page',name:'fetch_page',icon:'ti-file-download',cls:'ic-tool',dur:'420ms',tok:'—',cost:'—',scores:false,io:true},
+  llm2:{bc:'agentRun › llmCall',name:'llmCall',icon:'ti-sparkles',cls:'ic-llm',dur:'460ms',tok:'973 tok',cost:'$0.003',scores:false,io:true},
+  model2:{bc:'agentRun › llmCall › claude-sonnet-4',name:'claude-sonnet-4',icon:'ti-sparkles',cls:'ic-llm',dur:'460ms',tok:'973 tok',cost:'$0.003',scores:false,io:true},
+  tool3:{bc:'agentRun › write_summary',name:'write_summary',icon:'ti-pencil',cls:'ic-tool',dur:'150ms',tok:'—',cost:'—',scores:false,io:true},
+  eval1:{bc:'agentRun › quality_eval',name:'quality_eval',icon:'ti-percentage',cls:'ic-eval',dur:'91ms',tok:'—',cost:'—',scores:true,io:false}
+};
+
+function setTab(el, name) {
+  document.querySelectorAll('.tnav').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function selectSpan(el, id) {
+  document.querySelectorAll('.tree-item').forEach(t => {
+    t.classList.remove('selected');
+    t.style.borderLeftColor = 'transparent';
+  });
+  el.classList.add('selected');
+  el.style.borderLeftColor = '#1D9E75';
+  const s = spans[id];
+  document.getElementById('detail-bc').textContent = s.bc;
+  document.getElementById('detail-name').textContent = s.name;
+  const icon = document.getElementById('detail-icon');
+  icon.className = 'ti-icon detail-title-icon ' + s.cls;
+  icon.innerHTML = '<i class="ti ' + s.icon + '" aria-hidden="true"></i>';
+  const metricsGrid = document.querySelector('.metrics-grid');
+  metricsGrid.innerHTML = `
+    <div class="metric"><span class="metric-label">Duration</span><span class="metric-val">${s.dur}</span></div>
+    <div class="metric"><span class="metric-label">Tokens</span><span class="metric-val">${s.tok}</span></div>
+    <div class="metric"><span class="metric-label">Est. cost</span><span class="metric-val">${s.cost}</span></div>
+  `;
+}
+</script>

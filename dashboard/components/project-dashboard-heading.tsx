@@ -12,7 +12,7 @@ export function ProjectDashboardHeading() {
         <div className="ns-label">Project / {project.name}</div>
         <h1 className="mt-1 text-lg font-semibold tracking-[-0.02em]">Trace dashboard</h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          Recent sessions and captured tool activity for the selected project.
+          Recent traces and captured tool activity for the selected project.
         </p>
       </div>
       <span className="ns-pill mt-1">

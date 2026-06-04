@@ -1,50 +1,38 @@
-'use client'
-
-import { useEffect, useMemo, useState } from 'react'
-import { format } from 'date-fns'
-import { Activity, ArrowRight, Cpu, Wrench } from 'lucide-react'
+import { AlertCircle, Brain, Play } from 'lucide-react'
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/client'
-import { Tables } from '@/lib/supabase/types'
+import { ModelCallRow } from '@/components/model-call-row'
+import { cn } from '@/lib/utils'
+import type { DashboardTraceWithToolCalls } from '@/lib/supabase/types'
 import { traceHref, type ProjectId } from '@/lib/projects'
 
-type TraceWithCalls = Tables<'traces'> & { tool_calls: Tables<'tool_calls'>[] | null }
+type TimelineEvent =
+  | { type: 'start'; id: 'start'; timestamp: number }
+  | { type: 'trace'; id: string; timestamp: number; trace: DashboardTraceWithToolCalls }
 
-export function TraceTimeline({ projectId, traces: initial, sessionId }: { projectId: ProjectId; traces: TraceWithCalls[]; sessionId: string }) {
-  const [traces, setTraces] = useState<TraceWithCalls[]>(initial)
-  const supabase = useMemo(() => createClient(), [])
+interface TraceTimelineProps {
+  projectId: ProjectId
+  traces: DashboardTraceWithToolCalls[]
+  sessionStart: string
+}
 
-  useEffect(() => {
-    const channel = supabase
-      .channel(`session-traces-${sessionId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'traces',
-          filter: `session_id=eq.${sessionId}`,
-        },
-        async (payload) => {
-          const newTrace = payload.new as Tables<'traces'>
-          const { data: calls } = await supabase
-            .from('tool_calls')
-            .select('*')
-            .eq('trace_id', newTrace.id)
-          setTraces((previous) => [...previous, { ...newTrace, tool_calls: calls ?? [] }])
-        }
-      )
-      .subscribe()
+export function TraceTimeline({ projectId, traces, sessionStart }: TraceTimelineProps) {
+  const sessionStartMs = new Date(sessionStart).getTime()
 
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [sessionId, supabase])
+  const events: TimelineEvent[] = [
+    { type: 'start', id: 'start', timestamp: sessionStartMs },
+  ]
 
-  if (!traces.length) {
+  for (const trace of traces) {
+    const traceMs = new Date(trace.created_at).getTime()
+    events.push({ type: 'trace', id: trace.id, timestamp: traceMs, trace })
+  }
+
+  events.sort((a, b) => a.timestamp - b.timestamp)
+
+  if (events.length <= 1) {
     return (
-      <div className="ns-panel flex min-h-44 flex-col items-center justify-center px-5 text-center">
-        <Activity className="h-4 w-4 text-primary" />
+      <div className="flex min-h-44 flex-col items-center justify-center rounded-md border bg-white px-5 text-center">
+        <Brain className="h-4 w-4 text-primary" />
         <p className="mt-2 text-xs font-medium">Waiting for the first trace</p>
         <p className="mt-1 text-[11px] text-muted-foreground">New runs appear here as they are ingested.</p>
       </div>
@@ -52,48 +40,141 @@ export function TraceTimeline({ projectId, traces: initial, sessionId }: { proje
   }
 
   return (
-    <div className="ns-panel overflow-hidden">
-      <div className="grid grid-cols-[170px_1fr_84px] border-b bg-[var(--ns-panel)] px-3 py-2 ns-label">
-        <span>Captured at</span>
-        <span>Run sequence</span>
-        <span className="text-right">Tools</span>
-      </div>
-      <div>
-        {traces.map((trace, index) => (
-          <Link
-            key={trace.id}
-            href={traceHref(projectId, trace.id)}
-            className="group grid min-h-[72px] grid-cols-[170px_1fr_84px] items-center border-b px-3 py-2 last:border-b-0 hover:bg-[var(--ns-panel)]"
-          >
-            <div>
-              <div className="font-mono text-[11px] text-foreground">{format(new Date(trace.created_at), 'HH:mm:ss.SSS')}</div>
-              <div className="mt-1 font-mono text-[10px] text-muted-foreground">trace #{String(index + 1).padStart(2, '0')}</div>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <Cpu className="h-3.5 w-3.5 text-primary" />
-                <span className="truncate font-mono text-[11px] text-foreground">run_{trace.run_id.slice(0, 12)}</span>
-              </div>
-              <div className="mt-2 flex min-w-0 items-center gap-1.5">
-                {trace.tool_calls?.length ? (
-                  trace.tool_calls.slice(0, 4).map((call) => (
-                    <span key={call.id} className="inline-flex max-w-32 items-center gap-1 rounded-sm bg-[#e6f1fb] px-1.5 py-0.5 font-mono text-[9px] text-[#185fa5]">
-                      <Wrench className="h-2.5 w-2.5 shrink-0" />
-                      <span className="truncate">{call.name ?? 'unnamed'}</span>
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-[10px] text-muted-foreground">No tool calls recorded</span>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-2 font-mono text-[11px] text-muted-foreground">
-              {trace.tool_calls?.length ?? 0}
-              <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-1 group-hover:text-primary" />
-            </div>
-          </Link>
-        ))}
-      </div>
+    <div className="space-y-2">
+      {events.map((event, index) => (
+        <div key={event.id}>
+          <TimelineItem
+            event={event}
+            sessionStartMs={sessionStartMs}
+            projectId={projectId}
+          />
+          {index < events.length - 1 && <div className="ml-[13px] h-2 w-px bg-border" />}
+        </div>
+      ))}
     </div>
   )
+}
+
+function TimelineItem({
+  event,
+  sessionStartMs,
+  projectId,
+}: {
+  event: TimelineEvent
+  sessionStartMs: number
+  projectId: ProjectId
+}) {
+  const offset = event.timestamp - sessionStartMs
+  const offsetLabel = formatOffset(offset)
+
+  if (event.type === 'start') {
+    return (
+      <div className="flex items-start gap-3">
+        <span
+          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+          style={{ background: '#e1f5ee', color: '#0f6e56' }}
+        >
+          <Play className="h-3.5 w-3.5 fill-current" />
+        </span>
+        <div className="flex-1 rounded-md bg-[var(--ns-panel)] px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[13px] font-medium text-foreground">Session started</span>
+            <span className="font-mono text-[11px] text-muted-foreground">+{offsetLabel}</span>
+          </div>
+          <div className="mt-0.5 text-[12px] text-muted-foreground">
+            Run begins · waiting for first agent step
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (event.type === 'trace') {
+    const trace = event.trace
+    const durationMs = trace.ended_at
+      ? new Date(trace.ended_at).getTime() - new Date(trace.created_at).getTime()
+      : null
+    const isError = trace.status === 'error' || trace.status === 'failed'
+    const tone = isError ? 'error' : 'llm'
+
+    return (
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+            tone === 'llm' && 'text-[#534ab7]'
+          )}
+          style={iconStyle(tone)}
+        >
+          {tone === 'error' ? (
+            <AlertCircle className="h-3.5 w-3.5" />
+          ) : (
+            <Brain className="h-3.5 w-3.5" />
+          )}
+        </span>
+        <div
+          className="flex-1 rounded-md bg-[var(--ns-panel)] px-3 py-2"
+          style={tone === 'error' ? { border: '0.5px solid #f7c1c1' } : undefined}
+        >
+          <div className="flex items-center justify-between">
+            <Link
+              href={traceHref(projectId, trace.id)}
+              className={cn(
+                'text-[13px] font-medium hover:underline',
+                tone === 'error' ? 'text-[#a32d2d]' : 'text-foreground'
+              )}
+            >
+              LLM call · {trace.name || `run_${trace.run_id.slice(0, 8)}`}
+            </Link>
+            <span
+              className={cn(
+                'font-mono text-[11px]',
+                tone === 'error' ? 'text-[#a32d2d]' : 'text-muted-foreground'
+              )}
+            >
+              +{offsetLabel}
+              {durationMs !== null && ` · ${formatDuration(durationMs)}`}
+            </span>
+          </div>
+          <div
+            className={cn(
+              'mt-0.5 text-[12px]',
+              tone === 'error' ? 'text-[#a32d2d]' : 'text-muted-foreground'
+            )}
+          >
+            run_{trace.run_id.slice(0, 12)} · {trace.tool_calls.length} tool call
+            {trace.tool_calls.length === 1 ? '' : 's'}
+            {trace.status && trace.status !== 'completed' && trace.status !== 'success' ? ` · ${trace.status}` : ''}
+          </div>
+          <ModelCallRow
+            model={trace.model}
+            inputTokens={trace.input_tokens}
+            outputTokens={trace.output_tokens}
+            costUsd={trace.cost_usd}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const _exhaustive: never = event
+  return _exhaustive
+}
+
+function iconStyle(tone: 'llm' | 'error'): React.CSSProperties {
+  if (tone === 'error') {
+    return { background: '#fcebeb', color: '#a32d2d' }
+  }
+  return { background: '#eeedfe', color: '#534ab7' }
+}
+
+function formatOffset(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 10_000) return `${(ms / 1000).toFixed(2)}s`
+  return `${(ms / 1000).toFixed(1)}s`
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(1)}s`
 }

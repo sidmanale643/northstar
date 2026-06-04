@@ -1,0 +1,326 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--font-sans); background: transparent; }
+  .tabs { display: flex; gap: 0; border-bottom: 0.5px solid var(--color-border-tertiary); margin-bottom: 2rem; }
+  .tab { padding: 10px 20px; font-size: 14px; cursor: pointer; color: var(--color-text-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab.active { color: var(--color-text-primary); border-bottom: 2px solid #1D9E75; font-weight: 500; }
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-header { margin-bottom: 1.5rem; }
+  .breadcrumb { font-size: 11px; color: var(--color-text-tertiary); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px; }
+  .page-title { font-size: 22px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+  .page-subtitle { font-size: 13px; color: var(--color-text-secondary); }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 1.5rem; }
+  .stat-card { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 1rem; }
+  .stat-label { font-size: 11px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+  .stat-num { font-size: 24px; font-weight: 500; color: var(--color-text-primary); }
+  .stat-sub { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  .stat-ready { font-size: 20px; font-weight: 500; color: #1D9E75; }
+
+  .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-secondary); }
+  .section-count { font-size: 12px; color: var(--color-text-tertiary); }
+
+  .table-wrap { border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); overflow: hidden; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .data-table th { background: var(--color-background-secondary); padding: 8px 16px; text-align: left; font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .data-table td { padding: 10px 16px; border-bottom: 0.5px solid var(--color-border-tertiary); color: var(--color-text-primary); vertical-align: middle; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: var(--color-background-secondary); cursor: pointer; }
+
+  .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .badge-success { background: #E1F5EE; color: #0F6E56; }
+  .badge-warn { background: #FAEEDA; color: #854F0B; }
+  .badge-error { background: #FCEBEB; color: #A32D2D; }
+  .badge-gray { background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary); }
+  .badge-purple { background: #EEEDFE; color: #3C3489; }
+  .badge-blue { background: #E6F1FB; color: #0C447C; }
+
+  .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+  .dot-green { background: #1D9E75; }
+  .dot-amber { background: #BA7517; }
+  .dot-red { background: #A32D2D; }
+  .dot-gray { background: #888780; }
+
+  .mono { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-secondary); }
+
+  .filter-row { display: flex; gap: 8px; margin-bottom: 1rem; align-items: center; }
+  .filter-chip { font-size: 12px; padding: 4px 12px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); color: var(--color-text-secondary); cursor: pointer; background: var(--color-background-primary); }
+  .filter-chip.on { background: #E1F5EE; color: #0F6E56; border-color: #5DCAA5; }
+
+  .timeline-wrap { margin-top: 1rem; }
+  .tl-item { display: flex; gap: 12px; margin-bottom: 8px; align-items: flex-start; }
+  .tl-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-top: 1px; }
+  .tl-icon-tool { background: #E6F1FB; color: #185FA5; }
+  .tl-icon-llm { background: #EEEDFE; color: #534AB7; }
+  .tl-icon-event { background: #E1F5EE; color: #0F6E56; }
+  .tl-body { flex: 1; background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 8px 12px; }
+  .tl-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+  .tl-name { font-size: 13px; font-weight: 500; color: var(--color-text-primary); }
+  .tl-time { font-size: 11px; color: var(--color-text-tertiary); }
+  .tl-detail { font-size: 12px; color: var(--color-text-secondary); }
+  .tl-connector { width: 1px; background: var(--color-border-tertiary); height: 8px; margin-left: 13px; }
+
+  .tag { font-size: 11px; color: var(--color-text-tertiary); font-family: var(--font-mono); background: var(--color-background-secondary); padding: 1px 6px; border-radius: 4px; border: 0.5px solid var(--color-border-tertiary); }
+
+  .duration-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .duration-bar { height: 4px; border-radius: 2px; background: #9FE1CB; }
+  .duration-err { background: #F09595; }
+
+  .empty-state { text-align: center; padding: 3rem; color: var(--color-text-secondary); font-size: 13px; }
+</style>
+
+<h2 class="sr-only">NorthStar page designs for Sessions and Traces views</h2>
+
+<div class="tabs">
+  <div class="tab active" onclick="show('sessions')">Sessions page</div>
+  <div class="tab" onclick="show('traces')">Traces page (within a session)</div>
+  <div class="tab" onclick="show('current')">Current (broken) — for reference</div>
+</div>
+
+<div id="sessions" class="page active">
+  <div class="page-header">
+    <div class="breadcrumb">Project / HHH</div>
+    <div class="page-title">Sessions</div>
+    <div class="page-subtitle">Each session groups a conversation or agent run. Click a session to inspect its traces.</div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total sessions <i class="ti ti-layers-subtract" aria-hidden="true"></i></div>
+      <div class="stat-num">24</div>
+      <div class="stat-sub">3 active now</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg duration <i class="ti ti-clock" aria-hidden="true"></i></div>
+      <div class="stat-num">4.2s</div>
+      <div class="stat-sub">p95: 11.8s</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Error rate <i class="ti ti-alert-triangle" aria-hidden="true"></i></div>
+      <div class="stat-num">8%</div>
+      <div class="stat-sub">2 sessions errored</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tool calls <i class="ti ti-tool" aria-hidden="true"></i></div>
+      <div class="stat-num">138</div>
+      <div class="stat-sub">avg 5.7 / session</div>
+    </div>
+  </div>
+
+  <div class="filter-row">
+    <span style="font-size:12px; color:var(--color-text-secondary);">Filter:</span>
+    <div class="filter-chip on">All</div>
+    <div class="filter-chip">Active</div>
+    <div class="filter-chip">Errored</div>
+    <div class="filter-chip">Last 24h</div>
+    <div style="margin-left:auto; display:flex; align-items:center; gap:8px;">
+      <i class="ti ti-search" style="font-size:16px; color:var(--color-text-tertiary)" aria-hidden="true"></i>
+      <input type="text" placeholder="Search sessions…" style="font-size:12px; width:180px;">
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">Recent sessions</span>
+    <span class="section-count">24 shown</span>
+  </div>
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Session ID</th>
+          <th>Status</th>
+          <th>Started</th>
+          <th>Duration</th>
+          <th>Traces</th>
+          <th>Tool calls</th>
+          <th>Tags</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mono">sess_a1b2c3d4</span></td>
+          <td><span class="badge badge-success"><span class="dot dot-green"></span> completed</span></td>
+          <td style="color:var(--color-text-secondary); font-size:12px;">2m ago</td>
+          <td><div class="duration-bar-wrap"><div class="duration-bar" style="width:40px"></div><span style="font-size:12px;color:var(--color-text-secondary);">3.1s</span></div></td>
+          <td style="font-size:13px;">7</td>
+          <td style="font-size:13px;">12</td>
+          <td><span class="tag">prod</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">sess_e5f6g7h8</span></td>
+          <td><span class="badge" style="background:#E6F1FB;color:#185FA5;"><span class="dot" style="background:#378ADD;"></span> active</span></td>
+          <td style="color:var(--color-text-secondary); font-size:12px;">5m ago</td>
+          <td><div class="duration-bar-wrap"><div class="duration-bar" style="width:60px; background:#B5D4F4;"></div><span style="font-size:12px;color:var(--color-text-secondary);">running…</span></div></td>
+          <td style="font-size:13px;">3</td>
+          <td style="font-size:13px;">5</td>
+          <td><span class="tag">staging</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">sess_i9j0k1l2</span></td>
+          <td><span class="badge badge-error"><span class="dot dot-red"></span> errored</span></td>
+          <td style="color:var(--color-text-secondary); font-size:12px;">18m ago</td>
+          <td><div class="duration-bar-wrap"><div class="duration-bar duration-err" style="width:70px;"></div><span style="font-size:12px;color:var(--color-text-secondary);">9.4s</span></div></td>
+          <td style="font-size:13px;">11</td>
+          <td style="font-size:13px;">24</td>
+          <td><span class="tag">prod</span><span class="tag" style="margin-left:4px;">retry</span></td>
+        </tr>
+        <tr>
+          <td><span class="mono">sess_m3n4o5p6</span></td>
+          <td><span class="badge badge-success"><span class="dot dot-green"></span> completed</span></td>
+          <td style="color:var(--color-text-secondary); font-size:12px;">1h ago</td>
+          <td><div class="duration-bar-wrap"><div class="duration-bar" style="width:25px"></div><span style="font-size:12px;color:var(--color-text-secondary);">1.8s</span></div></td>
+          <td style="font-size:13px;">4</td>
+          <td style="font-size:13px;">7</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td><span class="mono">sess_q7r8s9t0</span></td>
+          <td><span class="badge badge-warn"><span class="dot dot-amber"></span> timeout</span></td>
+          <td style="color:var(--color-text-secondary); font-size:12px;">2h ago</td>
+          <td><div class="duration-bar-wrap"><div class="duration-bar" style="width:90px; background:#FAC775;"></div><span style="font-size:12px;color:var(--color-text-secondary);">30.0s</span></div></td>
+          <td style="font-size:13px;">18</td>
+          <td style="font-size:13px;">41</td>
+          <td><span class="tag">prod</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="traces" class="page">
+  <div class="page-header">
+    <div class="breadcrumb">Project / HHH / Sessions / <span style="color:var(--color-text-secondary)">sess_i9j0k1l2</span></div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div>
+        <div class="page-title">Session: sess_i9j0k1l2</div>
+        <div class="page-subtitle">Trace-by-trace view of all LLM calls, tool uses, and events in this session</div>
+      </div>
+      <span class="badge badge-error" style="font-size:12px; padding:4px 10px;"><span class="dot dot-red"></span> errored · 9.4s</span>
+    </div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Traces</div>
+      <div class="stat-num">11</div>
+      <div class="stat-sub">in this session</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">LLM calls</div>
+      <div class="stat-num">6</div>
+      <div class="stat-sub">4,820 tokens total</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Tool calls</div>
+      <div class="stat-num">24</div>
+      <div class="stat-sub">1 failed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Error</div>
+      <div class="stat-num" style="font-size:14px; color:#A32D2D;">ToolTimeoutError</div>
+      <div class="stat-sub">at trace #9</div>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <span class="section-title">Trace timeline</span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <span class="badge badge-purple" style="font-size:11px;">LLM call</span>
+      <span class="badge badge-blue" style="font-size:11px;">Tool call</span>
+      <span class="badge badge-success" style="font-size:11px;">Event</span>
+      <span class="badge badge-error" style="font-size:11px;">Error</span>
+    </div>
+  </div>
+
+  <div class="timeline-wrap">
+    <div class="tl-item">
+      <div class="tl-icon tl-icon-event"><i class="ti ti-player-play" style="font-size:13px" aria-hidden="true"></i></div>
+      <div class="tl-body">
+        <div class="tl-top">
+          <span class="tl-name">Session started</span>
+          <span class="tl-time">+0ms</span>
+        </div>
+        <div class="tl-detail">Input: "Summarize the latest quarterly report and email it to finance@acme.com"</div>
+      </div>
+    </div>
+    <div class="tl-connector"></div>
+    <div class="tl-item">
+      <div class="tl-icon tl-icon-llm"><i class="ti ti-brain" style="font-size:13px" aria-hidden="true"></i></div>
+      <div class="tl-body">
+        <div class="tl-top">
+          <span class="tl-name">LLM call — claude-sonnet-4-20250514</span>
+          <span class="tl-time">+12ms · 820ms</span>
+        </div>
+        <div class="tl-detail">580 in / 214 out tokens · Decided to call <span class="tag">read_document</span></div>
+      </div>
+    </div>
+    <div class="tl-connector"></div>
+    <div class="tl-item">
+      <div class="tl-icon tl-icon-tool"><i class="ti ti-tool" style="font-size:13px" aria-hidden="true"></i></div>
+      <div class="tl-body">
+        <div class="tl-top">
+          <span class="tl-name">Tool: read_document</span>
+          <span class="tl-time">+832ms · 210ms</span>
+        </div>
+        <div class="tl-detail">Args: <span class="tag">doc_id: "q3_report"</span> · Returned 12,400 chars</div>
+      </div>
+    </div>
+    <div class="tl-connector"></div>
+    <div class="tl-item">
+      <div class="tl-icon tl-icon-llm"><i class="ti ti-brain" style="font-size:13px" aria-hidden="true"></i></div>
+      <div class="tl-body">
+        <div class="tl-top">
+          <span class="tl-name">LLM call — claude-sonnet-4-20250514</span>
+          <span class="tl-time">+1,042ms · 1.8s</span>
+        </div>
+        <div class="tl-detail">2,100 in / 640 out tokens · Summarized document · Called <span class="tag">send_email</span></div>
+      </div>
+    </div>
+    <div class="tl-connector"></div>
+    <div class="tl-item">
+      <div class="tl-icon" style="background:#FCEBEB;color:#A32D2D; width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px;"><i class="ti ti-alert-circle" aria-hidden="true"></i></div>
+      <div class="tl-body" style="border: 0.5px solid #F7C1C1;">
+        <div class="tl-top">
+          <span class="tl-name" style="color:#A32D2D;">Tool: send_email — ToolTimeoutError</span>
+          <span class="tl-time">+2,842ms · 30s timeout</span>
+        </div>
+        <div class="tl-detail" style="color:#A32D2D;">SMTP connection timed out after 30,000ms. Args: <span class="tag">to: "finance@acme.com"</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="current" class="page">
+  <div class="page-header">
+    <div class="breadcrumb">Project / HHH</div>
+    <div class="page-title">Trace dashboard</div>
+    <div class="page-subtitle">Recent sessions and captured tool activity for the selected project.</div>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-num">0</div><div class="stat-sub">0 active</div></div>
+    <div class="stat-card"><div class="stat-label">Traces</div><div class="stat-num">0</div><div class="stat-sub">captured runs</div></div>
+    <div class="stat-card"><div class="stat-label">Tool calls</div><div class="stat-num">0</div><div class="stat-sub">across all sessions</div></div>
+    <div class="stat-card"><div class="stat-label">Pipeline</div><div class="stat-ready">ready</div><div class="stat-sub">project configured</div></div>
+  </div>
+  <div class="section-header"><span class="section-title">Recent sessions</span><span class="section-count">0 shown</span></div>
+  <div class="table-wrap">
+    <div class="empty-state">
+      <div style="font-size:32px;color:var(--color-text-tertiary);margin-bottom:8px;"><i class="ti ti-activity" aria-hidden="true"></i></div>
+      No sessions captured yet<br>
+      <span style="font-size:12px;">Same empty state appears on both Sessions and Traces pages — this is the current problem.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>

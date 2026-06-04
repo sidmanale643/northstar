@@ -1,12 +1,17 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Activity,
   BarChart3,
   Bug,
+  ChevronDown,
+  ChevronUp,
+  Database,
   FolderKanban,
   Layers3,
+  PanelLeft,
+  PanelLeftClose,
   Settings2,
   Star,
 } from 'lucide-react'
@@ -14,7 +19,6 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { ActiveProjectProvider, useProjectWorkspace } from '@/components/project-provider'
 import { ProjectSwitcher } from '@/components/project-switcher'
-import { RealtimeIndicator } from '@/components/real-time-indicator'
 import { cn } from '@/lib/utils'
 import { projectHref, type Project } from '@/lib/projects'
 
@@ -24,7 +28,8 @@ function navigation(project: Project) {
     { label: 'Traces', href: projectHref(project.id), icon: Activity },
     { label: 'Sessions', href: projectHref(project.id, 'sessions'), icon: Layers3 },
     { label: 'Metrics', icon: BarChart3 },
-    { label: 'Evals', icon: Bug },
+    { label: 'Datasets', href: projectHref(project.id, 'datasets'), icon: Database },
+    { label: 'Evals', href: projectHref(project.id, 'evals'), icon: Bug },
     { label: 'Settings', href: projectHref(project.id, 'settings'), icon: Settings2 },
   ]
 }
@@ -60,27 +65,82 @@ export function ProjectWorkspaceShell({ projectId, children }: { projectId: stri
 
 function ProjectWorkspaceShellContent({ project, children }: { project: Project; children: React.ReactNode }) {
   const pathname = usePathname()
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isTopBarCollapsed, setIsTopBarCollapsed] = useState(false)
 
   return (
-    <div className="grid min-h-screen grid-cols-[220px_1fr] grid-rows-[48px_1fr] bg-background max-md:grid-cols-1">
-      <header className="col-span-full flex items-center gap-3 border-b bg-[var(--ns-panel)] px-4">
-        <Link href="/projects" className="flex items-center gap-1.5 text-[13px] font-semibold tracking-[-0.03em] text-foreground">
-          <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] bg-primary">
-            <Star className="h-3 w-3 fill-white text-white" />
-          </span>
-          northstar
-        </Link>
-        <ProjectSwitcher />
-        <span className="ml-auto">
-          <RealtimeIndicator />
-        </span>
-        <span className="ns-pill">env: prod</span>
+    <div className={cn(
+      "grid h-screen w-full overflow-hidden bg-background max-md:grid-cols-1 transition-all duration-200",
+      isSidebarCollapsed ? "grid-cols-[0px_1fr]" : "grid-cols-[220px_1fr]",
+      isTopBarCollapsed ? "grid-rows-[24px_1fr]" : "grid-rows-[48px_1fr]"
+    )}>
+      <header className={cn(
+        "col-span-full flex items-center border-b bg-[var(--ns-panel)] transition-all duration-200 overflow-hidden",
+        isTopBarCollapsed ? "h-6 px-2" : "h-12 px-4"
+      )}>
+        {!isTopBarCollapsed ? (
+          <div className="flex w-full items-center gap-3">
+            <button 
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="p-1.5 rounded-md hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isSidebarCollapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+            <Link href="/projects" className="flex items-center gap-1.5 text-[13px] font-semibold tracking-[-0.03em] text-foreground">
+              <span className="flex h-[18px] w-[18px] items-center justify-center rounded-[3px] bg-primary">
+                <Star className="h-3 w-3 fill-white text-white" />
+              </span>
+              northstar
+            </Link>
+            <ProjectSwitcher />
+            <div className="flex-1" />
+            <button 
+              onClick={() => setIsTopBarCollapsed(true)}
+              className="p-1.5 rounded-md hover:bg-white/10 text-muted-foreground hover:text-foreground transition-colors"
+              title="Collapse top bar"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <button 
+            onClick={() => setIsTopBarCollapsed(false)}
+            className="flex w-full items-center justify-center gap-1.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <ChevronDown className="h-3 w-3" /> Expand top bar
+          </button>
+        )}
       </header>
 
-      <aside className="border-r bg-[var(--ns-panel)] max-md:hidden">
+      <aside className={cn(
+        "border-r bg-[var(--ns-panel)] max-md:hidden overflow-x-hidden overflow-y-auto custom-scrollbar transition-all duration-200",
+        isSidebarCollapsed ? "w-0 opacity-0" : "w-[220px] opacity-100"
+      )}>
+        <nav className="mt-1 pt-3">
+          {(() => {
+            const projectsItem = navigation(project).find(({ href }) => href === '/projects')
+            if (!projectsItem?.href) return null
+            const active = isActivePath({ href: projectsItem.href, pathname })
+            const Icon = projectsItem.icon
+            return (
+              <Link
+                href={projectsItem.href}
+                className={cn(
+                  'flex h-8 items-center gap-2 border-r-2 border-transparent px-3 text-[12.5px] text-muted-foreground transition-colors',
+                  active && 'border-r-primary bg-white font-medium text-foreground',
+                  !active && 'hover:bg-white hover:text-foreground'
+                )}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {projectsItem.label}
+              </Link>
+            )
+          })()}
+        </nav>
         <div className="px-3 pb-1 pt-5 ns-label">Navigation</div>
         <nav className="mt-1">
-          {navigation(project).map(({ label, href, icon: Icon }) => {
+          {navigation(project).filter(({ href }) => href !== '/projects').map(({ label, href, icon: Icon }) => {
             const active = isActivePath({ href, pathname })
             const className = cn(
               'flex h-8 items-center gap-2 border-r-2 border-transparent px-3 text-[12.5px] text-muted-foreground transition-colors',
@@ -110,19 +170,15 @@ function ProjectWorkspaceShellContent({ project, children }: { project: Project;
 
         <div className="mx-3 mt-8 border-t pt-4">
           <div className="ns-label">Current project</div>
-          <div className="mt-3 rounded-md border bg-white px-2.5 py-2">
+          <div className="mt-3 rounded-md border border-l-2 border-l-primary bg-white px-2.5 py-2">
             <div className="truncate text-[11px] font-medium text-foreground">{project.name}</div>
             <div className="mt-0.5 truncate font-mono text-[9px] text-muted-foreground">{project.id}</div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-foreground">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-              ingestion configured
-            </div>
           </div>
         </div>
       </aside>
 
-      <main className="min-w-0 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1240px] p-5 md:p-6">{children}</div>
+      <main className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-background">
+        <div className="flex flex-1 min-h-full w-full flex-col">{children}</div>
       </main>
     </div>
   )

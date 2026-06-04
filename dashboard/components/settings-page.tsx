@@ -9,8 +9,12 @@ import {
   Copy,
   CreditCard,
   Database,
+  Eye,
+  EyeOff,
+  FileCode,
   KeyRound,
   Mail,
+  Pencil,
   Plus,
   Receipt,
   RefreshCw,
@@ -20,20 +24,35 @@ import {
   Trash2,
   Users,
   Webhook,
+  X,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { DeleteProjectDialog } from '@/components/delete-project-dialog'
 import { useActiveProject, useProjectWorkspace } from '@/components/project-provider'
 import { cn } from '@/lib/utils'
 import { parseBackendProjectId, type BackendProjectId, type Project } from '@/lib/projects'
+import {
+  PROVIDER_KEY_INFOS,
+  type ProviderKeyProvider,
+  type ProviderKeyStatus,
+} from '@/lib/provider-key-config'
+
+const _SUPABASE_PROJECT_REF_RE = /^https?:\/\/([a-z0-9]+)\.supabase\.co\/?$/i
+
+function extractSupabaseProjectRef(supabaseUrl: string): string | null {
+  const match = _SUPABASE_PROJECT_REF_RE.exec(supabaseUrl.trim())
+  return match?.[1] ?? null
+}
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const sdkEndpointSetting = supabaseUrl
-  ? `NORTHSTAR_ENDPOINT=${supabaseUrl.replace(/\/$/, '')}/functions/v1/ingest-traces`
+const supabaseProjectRef = supabaseUrl ? extractSupabaseProjectRef(supabaseUrl) : null
+const sdkProjectIdSetting = supabaseProjectRef
+  ? `NORTHSTAR_PROJECT_ID=${supabaseProjectRef}`
   : null
 
 const tabs = [
   { id: 'api', label: 'API key', icon: KeyRound },
+  { id: 'providers', label: 'Provider keys', icon: Server },
   { id: 'ingestion', label: 'Ingestion', icon: Database },
   { id: 'alerts', label: 'Alerts', icon: Bell },
   { id: 'team', label: 'Team', icon: Users },
@@ -86,6 +105,7 @@ export function SettingsPage() {
           </div>
 
           {activeTab === 'api' && <ApiSettings />}
+          {activeTab === 'providers' && <ProviderKeysSettings />}
           {activeTab === 'ingestion' && <IngestionSettings />}
           {activeTab === 'alerts' && <AlertSettings />}
           {activeTab === 'team' && <TeamSettings />}
@@ -102,23 +122,38 @@ function ApiSettings() {
   const project = useActiveProject()
   const { connectProject, renameProject } = useProjectWorkspace()
   const [name, setName] = useState(project.name)
-  const [createdApiKey, setCreatedApiKey] = useState<CreatedApiKey | null>(null)
-  const [isCopied, setIsCopied] = useState(false)
-  const [isEndpointCopied, setIsEndpointCopied] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [createdApiKey, setCreatedApiKey] = useState<CreatedApiKey | null>(() => readCreatedApiKey(project.id))
+  const [isApiKeyCopied, setIsApiKeyCopied] = useState(false)
+  const [isSdkProjectIdCopied, setIsSdkProjectIdCopied] = useState(false)
+  const [isWorkspaceIdCopied, setIsWorkspaceIdCopied] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setName(project.name)
-    setCreatedApiKey(null)
-    setIsCopied(false)
-    setIsEndpointCopied(false)
+    setIsEditingName(false)
+    setCreatedApiKey(readCreatedApiKey(project.id))
+    setIsApiKeyCopied(false)
+    setIsSdkProjectIdCopied(false)
+    setIsWorkspaceIdCopied(false)
     setError(null)
   }, [project.id, project.name])
 
+  useEffect(() => {
+    persistCreatedApiKey(project.id, createdApiKey)
+  }, [createdApiKey, project.id])
+
   function handleRename(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!name.trim()) return
     renameProject(project.id, name)
+    setIsEditingName(false)
+  }
+
+  function handleCancelRename() {
+    setName(project.name)
+    setIsEditingName(false)
   }
 
   async function handleGenerateApiKey() {
@@ -149,7 +184,7 @@ function ApiSettings() {
 
       connectProject(project.id, apiKey.projectId)
       setCreatedApiKey(apiKey)
-      setIsCopied(false)
+      setIsApiKeyCopied(false)
     } catch (apiKeyError) {
       setError(apiKeyError instanceof Error ? apiKeyError.message : 'Unable to create API key.')
     } finally {
@@ -161,23 +196,34 @@ function ApiSettings() {
     if (!createdApiKey) return
 
     if (await copyText(createdApiKey.value, input)) {
-      setIsCopied(true)
+      setIsApiKeyCopied(true)
       setError(null)
     } else {
       setError('Clipboard access is blocked. Press Ctrl+C, or Cmd+C on macOS, to copy the selected API key.')
     }
   }
 
-  async function handleCopySdkEndpoint(input: HTMLInputElement | null) {
-    if (!sdkEndpointSetting) return
+  async function handleCopySdkProjectId(input: HTMLInputElement | null) {
+    if (!sdkProjectIdSetting) return
 
-    if (await copyText(sdkEndpointSetting, input)) {
-      setIsEndpointCopied(true)
+    if (await copyText(sdkProjectIdSetting, input)) {
+      setIsSdkProjectIdCopied(true)
       setError(null)
     } else {
-      setError('Clipboard access is blocked. Press Ctrl+C, or Cmd+C on macOS, to copy the selected SDK endpoint.')
+      setError('Clipboard access is blocked. Press Ctrl+C, or Cmd+C on macOS, to copy the selected SDK project ID.')
     }
   }
+
+  async function handleCopyWorkspaceId() {
+    if (await copyText(project.id, null)) {
+      setIsWorkspaceIdCopied(true)
+      setError(null)
+    } else {
+      setError('Clipboard access is blocked. Press Ctrl+C, or Cmd+C on macOS, to copy the workspace ID.')
+    }
+  }
+
+  const hasExistingKey = Boolean(project.backendId) && !createdApiKey
 
   return (
     <>
@@ -187,53 +233,129 @@ function ApiSettings() {
             name="Project key"
             value={createdApiKey.value}
             meta={[`Created ${formatTimestamp(createdApiKey.createdAt)}`]}
-            isCopied={isCopied}
+            isCopied={isApiKeyCopied}
             onCopy={handleCopyApiKey}
             ariaLabel="Project API key"
           />
-        ) : project.backendId ? (
-          <div className="ns-panel mb-2 px-3 py-2.5 text-xs text-muted-foreground">
-            This project has an API key. Rotate it to reveal a new value.
-          </div>
         ) : (
-          <div className="ns-panel mb-2 px-3 py-2.5 text-xs text-muted-foreground">
-            Create an API key to send traces from the NorthStar SDK.
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-dashed border-border bg-white px-4 py-3">
+            <span className="text-xs text-muted-foreground">
+              {hasExistingKey
+                ? 'An API key exists. Rotate it to reveal a new value.'
+                : 'No API key yet — create one to start sending traces.'}
+            </span>
+            <button
+              className="ns-button ns-button-primary"
+              type="button"
+              disabled={isGenerating}
+              onClick={handleGenerateApiKey}
+            >
+              {hasExistingKey ? <RefreshCw /> : <Plus />}
+              {isGenerating ? 'Generating...' : hasExistingKey ? 'Rotate key' : 'Create API key'}
+            </button>
           </div>
         )}
-        <button className="ns-button ns-button-primary mt-2.5" type="button" disabled={isGenerating} onClick={handleGenerateApiKey}>
-          <RefreshCw />{isGenerating ? 'Generating...' : project.backendId ? 'Rotate key' : 'Create API key'}
-        </button>
         {createdApiKey && (
-          <p className="ns-settings-help text-amber-700">
-            Copy this key now. NorthStar stores only its hash and cannot show it again.
+          <p className="ns-settings-help">
+            Configure your SDK with <Code>NORTHSTAR_API_KEY</Code> and{' '}
+            <Code>NORTHSTAR_PROJECT_ID</Code>. The Workspace ID below is for
+            administrative operations only and should not be passed to the SDK.
           </p>
         )}
         {error && <p className="ns-settings-help text-red-700">{error}</p>}
-        <p className="ns-settings-help">
-          Configure your SDK with <Code>NORTHSTAR_API_KEY</Code> and the endpoint below. The dashboard Project ID is not an SDK setting.
-        </p>
-        {sdkEndpointSetting && (
-          <KeyCard
-            name="SDK endpoint"
-            value={sdkEndpointSetting}
-            meta={['Add to .env']}
-            isCopied={isEndpointCopied}
-            onCopy={handleCopySdkEndpoint}
-            ariaLabel="SDK endpoint setting"
-          />
-        )}
       </SettingsSection>
+
+      {sdkProjectIdSetting && (
+        <SettingsSection title="SDK project ID" icon={Database}>
+          <div className="ns-panel px-3.5 py-2.5">
+            <div className="mb-1.5 flex items-center justify-end gap-1.5">
+              <button
+                type="button"
+                className="ns-button px-2"
+                onClick={() => handleCopySdkProjectId(null)}
+                aria-label="Copy SDK project ID as .env line"
+              >
+                <FileCode />
+                Add to .env
+              </button>
+              <button
+                type="button"
+                className="ns-button px-2"
+                onClick={() => handleCopySdkProjectId(null)}
+                aria-label="Copy SDK project ID"
+              >
+                {isSdkProjectIdCopied ? <Check /> : <Copy />}
+                {isSdkProjectIdCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            <p className="truncate font-mono text-[11px] text-muted-foreground">{sdkProjectIdSetting}</p>
+          </div>
+          <p className="ns-settings-help">
+            Pass this as <Code>NORTHSTAR_PROJECT_ID</Code> in your SDK config. The
+            workspace ID below is for admin use only — do not pass it to the SDK.
+          </p>
+        </SettingsSection>
+      )}
 
       <SettingsSection title="Project" icon={Server}>
         <Field label="Project name" htmlFor="project-name">
-          <form className="flex max-w-sm gap-2" onSubmit={handleRename}>
-            <input id="project-name" className="ns-input" value={name} onChange={(event) => setName(event.target.value)} />
-            <button className="ns-button ns-button-primary" type="submit" disabled={!name.trim()}><Check />Save</button>
-          </form>
+          {isEditingName ? (
+            <form className="flex max-w-sm gap-2" onSubmit={handleRename}>
+              <input
+                id="project-name"
+                className="ns-input"
+                autoFocus
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault()
+                    handleCancelRename()
+                  }
+                }}
+              />
+              <button className="ns-button ns-button-primary" type="submit" disabled={!name.trim()}><Check />Save</button>
+              <button className="ns-button" type="button" onClick={handleCancelRename}><X />Cancel</button>
+            </form>
+          ) : (
+            <div className="flex max-w-sm items-center gap-2">
+              <span className="flex-1 truncate rounded-md border bg-secondary px-2.5 py-1.5 text-xs text-foreground">
+                {project.name}
+              </span>
+              <button
+                className="ns-button px-2"
+                type="button"
+                onClick={() => setIsEditingName(true)}
+                aria-label={`Edit project name`}
+              >
+                <Pencil />Edit
+              </button>
+            </div>
+          )}
         </Field>
-        <Field label="Project ID" htmlFor="project-id" tag="read-only" help="Identifies this project in dashboard and administrative operations. Do not pass this value to the SDK.">
-          <input id="project-id" className="ns-input max-w-[260px] tracking-[0.08em] text-muted-foreground" value={project.id} readOnly />
-        </Field>
+        <div className="ns-settings-field">
+          <div className="ns-settings-field-label">
+            <span>Workspace ID</span>
+            <span className="rounded-full border bg-secondary px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">read-only</span>
+          </div>
+          <div className="flex max-w-sm items-center gap-2">
+            <code className="flex-1 truncate rounded-md border bg-secondary px-2.5 py-1.5 font-mono text-[11px] text-muted-foreground">
+              {project.id}
+            </code>
+            <button
+              type="button"
+              className="ns-button px-2"
+              onClick={handleCopyWorkspaceId}
+              aria-label="Copy workspace ID"
+            >
+              {isWorkspaceIdCopied ? <Check /> : <Copy />}
+            </button>
+          </div>
+          <p className="ns-settings-help">
+            Identifies this project in dashboard and admin operations. Use the
+            SDK project ID above for traces.
+          </p>
+        </div>
       </SettingsSection>
     </>
   )
@@ -265,6 +387,197 @@ function IngestionSettings() {
         </Field>
       </SettingsSection>
     </>
+  )
+}
+
+function ProviderKeysSettings() {
+  const project = useActiveProject()
+  const [providerKeys, setProviderKeys] = useState<ProviderKeyStatus[]>([])
+  const [loading, setLoading] = useState(false)
+  const [savingProvider, setSavingProvider] = useState<ProviderKeyProvider | null>(null)
+  const [deletingProvider, setDeletingProvider] = useState<ProviderKeyProvider | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!project.backendId) {
+      setProviderKeys([])
+      return
+    }
+
+    const controller = new AbortController()
+    setLoading(true)
+    setError(null)
+
+    fetch(`/api/projects/${project.id}/provider-keys`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        const body: unknown = await response.json().catch(() => null)
+        if (!response.ok) throw new Error(readError(body))
+        const parsed = parseProviderKeyList(body)
+        if (!parsed) throw new Error('The server returned invalid provider key data.')
+        setProviderKeys(parsed)
+      })
+      .catch((loadError) => {
+        if (controller.signal.aborted) return
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load provider keys.')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [project.backendId, project.id])
+
+  async function handleSave(
+    event: FormEvent<HTMLFormElement>,
+    provider: ProviderKeyProvider
+  ) {
+    event.preventDefault()
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const apiKey = formData.get('apiKey')
+    if (typeof apiKey !== 'string' || !apiKey.trim()) {
+      setError('Enter a provider API key before saving.')
+      return
+    }
+
+    setSavingProvider(provider)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/provider-keys/${provider}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey }),
+      })
+      const body: unknown = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(readError(body))
+
+      const providerKey = parseProviderKeyResponse(body)
+      if (!providerKey) throw new Error('The server returned invalid provider key data.')
+
+      setProviderKeys((current) => upsertProviderKeyStatus(current, providerKey))
+      form.reset()
+      setMessage(`${providerLabel(provider)} key saved.`)
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Unable to save provider key.')
+    } finally {
+      setSavingProvider(null)
+    }
+  }
+
+  async function handleDelete(provider: ProviderKeyProvider) {
+    setDeletingProvider(provider)
+    setError(null)
+    setMessage(null)
+
+    try {
+      const response = await fetch(`/api/projects/${project.id}/provider-keys/${provider}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => null)
+        throw new Error(readError(body))
+      }
+
+      setProviderKeys((current) => removeProviderKeyStatus(current, provider))
+      setMessage(`${providerLabel(provider)} key deleted.`)
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Unable to delete provider key.')
+    } finally {
+      setDeletingProvider(null)
+    }
+  }
+
+  if (!project.backendId) {
+    return (
+      <SettingsSection title="Provider keys" icon={Server}>
+        <div className="ns-panel p-3.5 text-xs text-muted-foreground">
+          Create a NorthStar project API key first. Provider keys are stored
+          against the connected backend project and used by dashboard evals.
+        </div>
+      </SettingsSection>
+    )
+  }
+
+  const statuses = providerStatuses(providerKeys)
+
+  return (
+    <SettingsSection title="Provider keys" icon={Server}>
+      <p className="ns-settings-help mb-3">
+        These keys are encrypted server-side and used only when dashboard rubric
+        judges call third-party LLM providers.
+      </p>
+      {loading && (
+        <div className="ns-panel mb-2 px-3 py-2 text-xs text-muted-foreground">
+          Loading provider keys...
+        </div>
+      )}
+      {error && <p className="ns-settings-help mb-2 text-red-700">{error}</p>}
+      {message && <p className="ns-settings-help mb-2 text-[var(--ns-green-dark)]">{message}</p>}
+      <div className="space-y-2">
+        {PROVIDER_KEY_INFOS.map((info) => {
+          const status = statuses.get(info.provider)
+          const isSaving = savingProvider === info.provider
+          const isDeleting = deletingProvider === info.provider
+          return (
+            <form
+              key={info.provider}
+              className="ns-panel grid grid-cols-[160px_1fr_auto] items-center gap-3 px-3 py-2.5"
+              onSubmit={(event) => handleSave(event, info.provider)}
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-medium">{info.label}</div>
+                <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+                  {info.envVar}
+                </div>
+              </div>
+              <div className="min-w-0">
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                  <span
+                    className={cn(
+                      'rounded-full border px-1.5 py-0.5',
+                      status?.configured
+                        ? 'border-emerald-200 bg-[var(--ns-green-pale)] text-[var(--ns-green-dark)]'
+                        : 'bg-secondary'
+                    )}
+                  >
+                    {status?.configured ? 'configured' : 'not set'}
+                  </span>
+                  {status?.keyHint && <span className="font-mono">{status.keyHint}</span>}
+                  {status?.updatedAt && <span>Updated {formatTimestamp(status.updatedAt)}</span>}
+                </div>
+                <input
+                  className="ns-input"
+                  name="apiKey"
+                  type="password"
+                  placeholder={status?.configured ? 'Paste a replacement key' : 'Paste provider API key'}
+                  autoComplete="off"
+                />
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button className="ns-button ns-button-primary" type="submit" disabled={isSaving}>
+                  {isSaving ? 'Saving...' : status?.configured ? 'Replace' : 'Save'}
+                </button>
+                <button
+                  className="ns-button"
+                  type="button"
+                  disabled={!status?.configured || isDeleting}
+                  onClick={() => handleDelete(info.provider)}
+                >
+                  <Trash2 />
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </form>
+          )
+        })}
+      </div>
+    </SettingsSection>
   )
 }
 
@@ -388,6 +701,8 @@ function DisabledButton({ primary = false, className, children }: { primary?: bo
 
 function KeyCard({ name, value, meta, isCopied, onCopy, ariaLabel }: { name: string; value: string; meta: string[]; isCopied: boolean; onCopy: (input: HTMLInputElement | null) => void; ariaLabel: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [isHidden, setIsHidden] = useState(true)
+  const displayValue = isHidden ? '•'.repeat(value.length) : value
 
   return (
     <div className="ns-panel mb-2 flex items-center gap-2.5 px-3 py-2.5">
@@ -398,12 +713,23 @@ function KeyCard({ name, value, meta, isCopied, onCopy, ariaLabel }: { name: str
           ref={inputRef}
           aria-label={ariaLabel}
           className="mt-0.5 w-full bg-transparent font-mono text-[10px] text-muted-foreground outline-none"
-          value={value}
+          value={displayValue}
           onFocus={(event) => event.currentTarget.select()}
           readOnly
         />
       </div>
       <div className="text-right text-[10px] leading-4 text-muted-foreground">{meta.map((line) => <div key={line}>{line}</div>)}</div>
+      <button
+        type="button"
+        className="ns-button px-2"
+        onClick={() => setIsHidden((prev) => !prev)}
+        aria-label={isHidden ? `Reveal ${ariaLabel}` : `Hide ${ariaLabel}`}
+        aria-pressed={!isHidden}
+        title={isHidden ? 'Reveal' : 'Hide'}
+      >
+        {isHidden ? <Eye /> : <EyeOff />}
+        <span className="sr-only">{isHidden ? 'Reveal' : 'Hide'}</span>
+      </button>
       <button type="button" className="ns-button px-2" onClick={() => onCopy(inputRef.current)}>
         {isCopied ? <Check /> : <Copy />}
         <span className="sr-only">{isCopied ? 'Copied' : `Copy ${ariaLabel}`}</span>
@@ -505,6 +831,97 @@ function parseCreatedApiKey(value: unknown): CreatedApiKey | null {
     value: value.apiKey,
     projectId,
     createdAt: value.createdAt,
+  }
+}
+
+function parseProviderKeyList(value: unknown): ProviderKeyStatus[] | null {
+  if (!isRecord(value) || !Array.isArray(value.providerKeys)) return null
+  return value.providerKeys.every(isProviderKeyStatus) ? value.providerKeys : null
+}
+
+function parseProviderKeyResponse(value: unknown): ProviderKeyStatus | null {
+  if (!isRecord(value)) return null
+  return isProviderKeyStatus(value.providerKey) ? value.providerKey : null
+}
+
+function isProviderKeyStatus(value: unknown): value is ProviderKeyStatus {
+  return (
+    isRecord(value) &&
+    isProvider(value.provider) &&
+    typeof value.envVar === 'string' &&
+    typeof value.configured === 'boolean' &&
+    (value.keyHint === null || typeof value.keyHint === 'string') &&
+    (value.updatedAt === null || typeof value.updatedAt === 'string')
+  )
+}
+
+function isProvider(value: unknown): value is ProviderKeyProvider {
+  return typeof value === 'string' &&
+    PROVIDER_KEY_INFOS.some((info) => info.provider === value)
+}
+
+function providerStatuses(providerKeys: ProviderKeyStatus[]) {
+  return new Map(providerKeys.map((providerKey) => [providerKey.provider, providerKey]))
+}
+
+function upsertProviderKeyStatus(
+  providerKeys: ProviderKeyStatus[],
+  providerKey: ProviderKeyStatus
+) {
+  const next = providerKeys.filter((existing) => existing.provider !== providerKey.provider)
+  next.push(providerKey)
+  return next
+}
+
+function removeProviderKeyStatus(
+  providerKeys: ProviderKeyStatus[],
+  provider: ProviderKeyProvider
+) {
+  return providerKeys.map((providerKey) =>
+    providerKey.provider === provider
+      ? {
+          ...providerKey,
+          configured: false,
+          keyHint: null,
+          updatedAt: null,
+        }
+      : providerKey
+  )
+}
+
+function providerLabel(provider: ProviderKeyProvider) {
+  return PROVIDER_KEY_INFOS.find((info) => info.provider === provider)?.label ?? provider
+}
+
+function createdApiKeyStorageKey(projectId: string) {
+  return `northstar.created-api-key.${projectId}`
+}
+
+function readCreatedApiKey(projectId: string): CreatedApiKey | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const stored = window.sessionStorage.getItem(createdApiKeyStorageKey(projectId))
+    if (!stored) return null
+    return parseCreatedApiKey(JSON.parse(stored))
+  } catch {
+    return null
+  }
+}
+
+function persistCreatedApiKey(projectId: string, apiKey: CreatedApiKey | null) {
+  if (typeof window === 'undefined') return
+  const key = createdApiKeyStorageKey(projectId)
+  if (apiKey) {
+    window.sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        apiKey: apiKey.value,
+        projectId: apiKey.projectId,
+        createdAt: apiKey.createdAt,
+      }),
+    )
+  } else {
+    window.sessionStorage.removeItem(key)
   }
 }
 

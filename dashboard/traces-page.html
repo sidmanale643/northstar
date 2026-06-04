@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NorthStar — Traces</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface-2: #f0efe9;
+    --border: rgba(0,0,0,0.08);
+    --borderq-strong: rgba(0,0,0,0.14);
+    --text-1: #1a1916;
+    --text-2: #5a5850;
+    --text-3: #9a9890;
+    --teal: #1D9E75;
+    --teal-bg: #E1F5EE;
+    --teal-border: #9FE1CB;
+    --blue: #185FA5;
+    --blue-bg: #E6F1FB;
+    --blue-border: #85B7EB;
+    --purple: #534AB7;
+    --purple-bg: #EEEDFE;
+    --purple-border: #AFA9EC;
+    --amber: #854F0B;
+    --amber-bg: #FAEEDA;
+    --amber-border: #FAC775;
+    --red: #A32D2D;
+    --red-bg: #FCEBEB;
+    --red-border: #F09595;
+    --gray-bg: #f0efe9;
+    --sidebar-w: 220px;
+    --header-h: 48px;
+  }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background: var(--bg);
+    color: var(--text-1);
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 0.5px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    position: fixed;
+    top: 0; left: 0;
+    height: 100vh;
+    z-index: 10;
+    padding-top: var(--header-h);
+  }
+
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: var(--header-h);
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    z-index: 20;
+  }
+
+  .logo {
+    display: flex; align-items: center; gap: 8px;
+    font-weight: 600; font-size: 14px; color: var(--text-1);
+    text-decoration: none;
+  }
+  .logo-mark {
+    width: 26px; height: 26px; background: var(--text-1);
+    border-radius: 6px; display: flex; align-items: center; justify-content: center;
+  }
+  .logo-mark svg { width: 14px; height: 14px; fill: white; }
+
+  .proj-select {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface-2); border: 0.5px solid var(--border);
+    border-radius: 6px; padding: 4px 8px;
+    font-family: 'Sora', sans-serif; font-size: 12px; color: var(--text-1);
+    cursor: pointer;
+  }
+  .proj-select select {
+    border: none; background: transparent; font-family: inherit; font-size: 12px;
+    color: var(--text-1); cursor: pointer; outline: none;
+  }
+
+  .topbar-right {
+    margin-left: auto; display: flex; align-items: center; gap: 8px;
+  }
+  .ingestion-badge {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--teal); border: 0.5px solid var(--teal-border);
+    background: var(--teal-bg); border-radius: 20px; padding: 3px 10px;
+  }
+  .ingestion-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--teal);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .sidebar-nav {
+    padding: 16px 0;
+    flex: 1;
+  }
+  .nav-section-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    color: var(--text-3); text-transform: uppercase;
+    padding: 0 16px; margin-bottom: 4px; margin-top: 12px;
+  }
+  .nav-link {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 16px; color: var(--text-2);
+    text-decoration: none; font-size: 13px; font-weight: 400;
+    border-radius: 0; transition: background 0.1s;
+    position: relative;
+  }
+  .nav-link:hover { background: var(--surface-2); color: var(--text-1); }
+  .nav-link.active {
+    color: var(--text-1); font-weight: 500;
+    background: var(--surface-2);
+  }
+  .nav-link.active::before {
+    content: ''; position: absolute; left: 0; top: 4px; bottom: 4px;
+    width: 2px; background: var(--teal); border-radius: 0 2px 2px 0;
+  }
+  .nav-link svg { width: 15px; height: 15px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .nav-soon { font-size: 10px; color: var(--text-3); margin-left: auto;
+    background: var(--surface-2); border: 0.5px solid var(--border);
+    border-radius: 4px; padding: 1px 5px; letter-spacing: 0.04em; }
+
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 0.5px solid var(--border);
+  }
+  .current-proj-label { font-size: 10px; color: var(--text-3); text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 6px; }
+  .current-proj-card {
+    background: var(--surface-2); border: 0.5px solid var(--border);
+    border-radius: 8px; padding: 8px 10px;
+  }
+  .current-proj-name { font-size: 13px; font-weight: 500; }
+  .current-proj-id { font-size: 11px; color: var(--text-3); font-family: 'IBM Plex Mono', monospace; margin-top: 2px; }
+
+  /* ── Main ── */
+  .main {
+    margin-left: var(--sidebar-w);
+    padding-top: var(--header-h);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .content {
+    padding: 28px 32px;
+    max-width: 1100px;
+  }
+
+  /* ── Page header ── */
+  .breadcrumb {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-3);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 10px;
+  }
+  .breadcrumb a { color: var(--text-3); text-decoration: none; }
+  .breadcrumb a:hover { color: var(--text-2); }
+  .breadcrumb-sep { color: var(--text-3); }
+  .breadcrumb-current { color: var(--text-2); font-family: 'IBM Plex Mono', monospace; font-size: 10px; }
+
+  .page-title-row {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 4px;
+  }
+  .page-title { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
+  .page-subtitle { font-size: 12px; color: var(--text-3); margin-bottom: 24px; margin-top: 4px; }
+
+  .session-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500; border-radius: 20px; padding: 5px 12px;
+    border: 0.5px solid;
+  }
+  .session-badge.error { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+  .session-badge.success { color: var(--teal); background: var(--teal-bg); border-color: var(--teal-border); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .status-dot.error { background: var(--red); }
+  .status-dot.success { background: var(--teal); }
+
+  /* ── Stat cards ── */
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .stat-card-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--text-3);
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .stat-card-label svg { width: 14px; height: 14px; stroke: var(--text-3); fill: none; stroke-width: 1.8; }
+  .stat-card-num { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1; }
+  .stat-card-sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+  .stat-card-num.error { color: var(--red); font-size: 13px; font-family: 'IBM Plex Mono', monospace; font-weight: 500; line-height: 1.3; }
+
+  /* ── Section header ── */
+  .section-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 14px;
+  }
+  .section-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--text-3);
+  }
+  .legend { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .legend-item {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; padding: 2px 8px; border-radius: 20px; border: 0.5px solid;
+  }
+  .legend-item.llm { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
+  .legend-item.tool { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
+  .legend-item.event { color: var(--teal); background: var(--teal-bg); border-color: var(--teal-border); }
+  .legend-item.err { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+
+  /* ── Timeline ── */
+  .timeline { position: relative; }
+
+  .tl-item {
+    display: flex; gap: 14px; align-items: flex-start;
+    position: relative;
+    opacity: 0;
+    transform: translateY(8px);
+    animation: tl-in 0.3s ease forwards;
+  }
+  @keyframes tl-in { to { opacity: 1; transform: translateY(0); } }
+
+  .tl-left {
+    display: flex; flex-direction: column; align-items: center;
+    width: 32px; flex-shrink: 0;
+  }
+  .tl-icon {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; border: 0.5px solid;
+  }
+  .tl-icon svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .tl-icon.llm { background: var(--purple-bg); border-color: var(--purple-border); color: var(--purple); }
+  .tl-icon.tool { background: var(--blue-bg); border-color: var(--blue-border); color: var(--blue); }
+  .tl-icon.event { background: var(--teal-bg); border-color: var(--teal-border); color: var(--teal); }
+  .tl-icon.err { background: var(--red-bg); border-color: var(--red-border); color: var(--red); }
+  .tl-icon.warn { background: var(--amber-bg); border-color: var(--amber-border); color: var(--amber); }
+
+  .tl-line {
+    width: 1px; flex: 1; min-height: 12px;
+    background: var(--border); margin-top: 4px; margin-bottom: 0;
+  }
+
+  .tl-body {
+    flex: 1; min-width: 0;
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .tl-body:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+  }
+  .tl-body.err-card {
+    border-color: var(--red-border);
+    background: #fffafa;
+  }
+  .tl-body.expanded .tl-expand-content { display: block; }
+  .tl-body:not(.expanded) .tl-expand-content { display: none; }
+
+  .tl-top-row {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+  }
+  .tl-title { font-size: 13px; font-weight: 500; }
+  .tl-title.err { color: var(--red); }
+
+  .tl-meta {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+  }
+  .tl-offset {
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-3);
+  }
+  .tl-dur {
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-2); background: var(--surface-2);
+    border: 0.5px solid var(--border); border-radius: 4px;
+    padding: 1px 6px;
+  }
+  .tl-dur.slow { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+  .tl-dur.err { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+  .tl-chevron {
+    width: 16px; height: 16px; stroke: var(--text-3); fill: none; stroke-width: 2;
+    transition: transform 0.2s; flex-shrink: 0;
+  }
+  .tl-body.expanded .tl-chevron { transform: rotate(180deg); }
+
+  .tl-summary {
+    font-size: 12px; color: var(--text-2); margin-top: 6px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 11px; font-family: 'IBM Plex Mono', monospace;
+    background: var(--surface-2); border: 0.5px solid var(--border);
+    border-radius: 4px; padding: 1px 6px; color: var(--text-2);
+  }
+  .chip.model { color: var(--purple); background: var(--purple-bg); border-color: var(--purple-border); }
+  .chip.tokens { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
+  .chip.err { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+
+  .tl-expand-content {
+    margin-top: 12px; padding-top: 12px;
+    border-top: 0.5px solid var(--border);
+  }
+  .expand-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 10px;
+  }
+  .expand-block { }
+  .expand-block-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--text-3); margin-bottom: 4px;
+  }
+  .expand-block-val {
+    font-size: 12px; font-family: 'IBM Plex Mono', monospace;
+    color: var(--text-2);
+    background: var(--surface-2); border: 0.5px solid var(--border);
+    border-radius: 6px; padding: 8px 10px;
+    white-space: pre-wrap; word-break: break-all; line-height: 1.6;
+    max-height: 120px; overflow-y: auto;
+  }
+  .expand-block-val.err-val {
+    color: var(--red); background: var(--red-bg); border-color: var(--red-border);
+  }
+
+  .dur-bar-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .dur-bar-track {
+    flex: 1; height: 4px; background: var(--surface-2);
+    border-radius: 2px; overflow: hidden;
+  }
+  .dur-bar-fill { height: 100%; border-radius: 2px; background: var(--teal); }
+  .dur-bar-fill.slow { background: var(--amber-border); }
+  .dur-bar-fill.err { background: var(--red-border); }
+  .dur-bar-label { font-size: 11px; font-family: 'IBM Plex Mono', monospace; color: var(--text-3); min-width: 40px; text-align: right; }
+
+  .err-message {
+    background: var(--red-bg); border: 0.5px solid var(--red-border);
+    border-radius: 6px; padding: 10px 12px; margin-top: 10px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--red);
+  }
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <a href="#" class="logo">
+    <div class="logo-mark">
+      <svg viewBox="0 0 14 14"><polygon points="7,1 13,4 13,10 7,13 1,10 1,4"/></svg>
+    </div>
+    northstar
+  </a>
+  <div class="proj-select">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <select><option>hhh</option><option>prod-agent</option></select>
+  </div>
+  <button style="background:transparent;border:0.5px solid var(--border);border-radius:6px;padding:4px 7px;cursor:pointer;display:flex;align-items:center;">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  </button>
+  <div class="topbar-right">
+    <div class="ingestion-badge"><div class="ingestion-dot"></div> ingestion ready</div>
+  </div>
+</div>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <nav class="sidebar-nav">
+    <div class="nav-section-label">Navigation</div>
+    <a href="#" class="nav-link">
+      <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Traces
+    </a>
+    <a href="#" class="nav-link active">
+      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Sessions
+    </a>
+    <a href="#" class="nav-link">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Metrics
+      <span class="nav-soon">soon</span>
+    </a>
+    <a href="#" class="nav-link">
+      <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Evals
+      <span class="nav-soon">soon</span>
+    </a>
+    <a href="#" class="nav-link">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Settings
+    </a>
+  </nav>
+  <div class="sidebar-footer">
+    <div class="current-proj-label">Current project</div>
+    <div class="current-proj-card">
+      <div class="current-proj-name">hhh</div>
+      <div class="current-proj-id">proj_b898f1d9c63c</div>
+    </div>
+  </div>
+</aside>
+
+<!-- Main content -->
+<main class="main">
+  <div class="content">
+
+    <!-- Breadcrumb -->
+    <div class="breadcrumb">
+      <a href="#">Project</a>
+      <span class="breadcrumb-sep">/</span>
+      <a href="#">HHH</a>
+      <span class="breadcrumb-sep">/</span>
+      <a href="#">Sessions</a>
+      <span class="breadcrumb-sep">/</span>
+      <span class="breadcrumb-current">sess_i9j0k1l2</span>
+    </div>
+
+    <!-- Page title -->
+    <div class="page-title-row">
+      <div class="page-title">Session traces</div>
+      <span class="session-badge error">
+        <span class="status-dot error"></span>
+        errored &nbsp;·&nbsp; 9.4s total
+      </span>
+    </div>
+    <div class="page-subtitle">
+      Trace-by-trace view of all LLM calls, tool uses, and events in this session &nbsp;·&nbsp;
+      <span style="font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--text-3);">sess_i9j0k1l2</span>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-card-label">
+          Traces
+          <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <div class="stat-card-num">11</div>
+        <div class="stat-card-sub">in this session</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">
+          LLM calls
+          <svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 1 8 8v4l3 3-3 3v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1L1 17l3-3v-4a8 8 0 0 1 8-8z"/></svg>
+        </div>
+        <div class="stat-card-num">6</div>
+        <div class="stat-card-sub">4,820 tokens total</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">
+          Tool calls
+          <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        </div>
+        <div class="stat-card-num">24</div>
+        <div class="stat-card-sub">1 failed</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-label">
+          Error
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="stat-card-num error">ToolTimeoutError</div>
+        <div class="stat-card-sub">at trace #9 · send_email</div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="section-row">
+      <span class="section-label">Trace timeline</span>
+      <div class="legend">
+        <span class="legend-item llm">LLM call</span>
+        <span class="legend-item tool">Tool call</span>
+        <span class="legend-item event">Event</span>
+        <span class="legend-item err">Error</span>
+      </div>
+    </div>
+
+    <div class="timeline">
+
+      <!-- 1. Session started -->
+      <div class="tl-item" style="animation-delay:0.05s">
+        <div class="tl-left">
+          <div class="tl-icon event">
+            <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          </div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-body" onclick="toggle(this)">
+          <div class="tl-top-row">
+            <span class="tl-title">Session started</span>
+            <div class="tl-meta">
+              <span class="tl-offset">+0ms</span>
+              <svg class="tl-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span style="color:var(--text-2);">Input:</span>
+            <span style="font-style:italic;color:var(--text-3);">"Summarize the latest quarterly report and email it to finance@acme.com"</span>
+          </div>
+          <div class="tl-expand-content">
+            <div class="expand-grid">
+              <div class="expand-block">
+                <div class="expand-block-label">User input</div>
+                <div class="expand-block-val">"Summarize the latest quarterly report and email it to finance@acme.com"</div>
+              </div>
+              <div class="expand-block">
+                <div class="expand-block-label">Session metadata</div>
+                <div class="expand-block-val">session_id: sess_i9j0k1l2
+project:    proj_b898f1d9c63c
+env:        production
+sdk:        northstar-py 0.4.2</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. LLM call 1 -->
+      <div class="tl-item" style="animation-delay:0.1s">
+        <div class="tl-left">
+          <div class="tl-icon llm">
+            <svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 1 8 8v4l3 3-3 3v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1L1 17l3-3v-4a8 8 0 0 1 8-8z"/></svg>
+          </div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-body" onclick="toggle(this)">
+          <div class="tl-top-row">
+            <span class="tl-title">LLM call</span>
+            <div class="tl-meta">
+              <span class="tl-offset">+12ms</span>
+              <span class="tl-dur">820ms</span>
+              <svg class="tl-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span class="chip model">claude-sonnet-4-20250514</span>
+            <span class="chip tokens">580 in / 214 out</span>
+            <span class="chip">→ read_document</span>
+          </div>
+          <div class="tl-expand-content">
+            <div class="expand-grid">
+              <div class="expand-block">
+                <div class="expand-block-label">System prompt (excerpt)</div>
+                <div class="expand-block-val">You are a helpful assistant. Use the available tools to complete tasks…</div>
+              </div>
+              <div class="expand-block">
+                <div class="expand-block-label">Assistant response</div>
+                <div class="expand-block-val">I'll retrieve the quarterly report for you.
+[tool_use: read_document]</div>
+              </div>
+            </div>
+            <div class="expand-block-label" style="margin-top:4px;">Token usage</div>
+            <div class="dur-bar-wrap">
+              <span style="font-size:11px;color:var(--text-3);min-width:50px;">580 in</span>
+              <div class="dur-bar-track"><div class="dur-bar-fill" style="width:45%"></div></div>
+              <span class="dur-bar-label">820ms</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Tool: read_document -->
+      <div class="tl-item" style="animation-delay:0.15s">
+        <div class="tl-left">
+          <div class="tl-icon tool">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          </div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-body" onclick="toggle(this)">
+          <div class="tl-top-row">
+            <span class="tl-title">Tool call &mdash; <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--blue)">read_document</code></span>
+            <div class="tl-meta">
+              <span class="tl-offset">+832ms</span>
+              <span class="tl-dur">210ms</span>
+              <svg class="tl-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span class="chip">doc_id: "q3_report"</span>
+            <span style="color:var(--text-3);">→ returned 12,400 chars</span>
+          </div>
+          <div class="tl-expand-content">
+            <div class="expand-grid">
+              <div class="expand-block">
+                <div class="expand-block-label">Input args</div>
+                <div class="expand-block-val">{ "doc_id": "q3_report",
+  "format": "text" }</div>
+              </div>
+              <div class="expand-block">
+                <div class="expand-block-label">Output (truncated)</div>
+                <div class="expand-block-val">Q3 2025 Quarterly Report
+Revenue: $4.2M (+18% YoY)
+EBITDA: $1.1M...
+[12,400 chars total]</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. LLM call 2 -->
+      <div class="tl-item" style="animation-delay:0.2s">
+        <div class="tl-left">
+          <div class="tl-icon llm">
+            <svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 1 8 8v4l3 3-3 3v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1L1 17l3-3v-4a8 8 0 0 1 8-8z"/></svg>
+          </div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-body" onclick="toggle(this)">
+          <div class="tl-top-row">
+            <span class="tl-title">LLM call</span>
+            <div class="tl-meta">
+              <span class="tl-offset">+1,042ms</span>
+              <span class="tl-dur slow">1.8s</span>
+              <svg class="tl-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span class="chip model">claude-sonnet-4-20250514</span>
+            <span class="chip tokens">2,100 in / 640 out</span>
+            <span class="chip">→ send_email</span>
+          </div>
+          <div class="tl-expand-content">
+            <div class="expand-grid">
+              <div class="expand-block">
+                <div class="expand-block-label">Summary generated</div>
+                <div class="expand-block-val">Q3 revenue reached $4.2M, up 18% year-over-year. EBITDA improved to $1.1M with margins expanding 2pp. Key growth driver was enterprise segment (+34%)...</div>
+              </div>
+              <div class="expand-block">
+                <div class="expand-block-label">Tool decision</div>
+                <div class="expand-block-val">Decided to call send_email with summary as body, addressed to finance@acme.com</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Tool: send_email — ERROR -->
+      <div class="tl-item" style="animation-delay:0.25s">
+        <div class="tl-left">
+          <div class="tl-icon err">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-body err-card" onclick="toggle(this)">
+          <div class="tl-top-row">
+            <span class="tl-title err">Tool call — <code style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--red)">send_email</code> &nbsp;·&nbsp; ToolTimeoutError</span>
+            <div class="tl-meta">
+              <span class="tl-offset">+2,842ms</span>
+              <span class="tl-dur err">30.0s timeout</span>
+              <svg class="tl-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span class="chip">to: "finance@acme.com"</span>
+            <span class="chip err">SMTP connection failed</span>
+          </div>
+          <div class="tl-expand-content">
+            <div class="expand-grid">
+              <div class="expand-block">
+                <div class="expand-block-label">Input args</div>
+                <div class="expand-block-val">{ "to": "finance@acme.com",
+  "subject": "Q3 2025 Summary",
+  "body": "Q3 revenue reached $4.2M..." }</div>
+              </div>
+              <div class="expand-block">
+                <div class="expand-block-label">Error details</div>
+                <div class="expand-block-val err-val">ToolTimeoutError: SMTP connection
+timed out after 30,000ms.
+
+Host: smtp.acme.com:587
+Last attempt: TLS handshake</div>
+              </div>
+            </div>
+            <div class="err-message">
+              ToolTimeoutError: The tool send_email did not return within the configured timeout of 30,000ms.
+              SMTP connection to smtp.acme.com:587 failed during TLS handshake.
+              Check firewall rules and SMTP host availability.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. LLM recovery call -->
+      <div class="tl-item" style="animation-delay:0.3s">
+        <div class="tl-left">
+          <div class="tl-icon llm">
+            <svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 1 8 8v4l3 3-3 3v1a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-1L1 17l3-3v-4a8 8 0 0 1 8-8z"/></svg>
+          </div>
+          <div class="tl-line"></div>
+        </div>
+        <div class="tl-body" onclick="toggle(this)">
+          <div class="tl-top-row">
+            <span class="tl-title">LLM call — error handling</span>
+            <div class="tl-meta">
+              <span class="tl-offset">+32,842ms</span>
+              <span class="tl-dur">540ms</span>
+              <svg class="tl-chevron" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span class="chip model">claude-sonnet-4-20250514</span>
+            <span class="chip tokens">3,100 in / 120 out</span>
+            <span style="color:var(--text-3);">reported error to user</span>
+          </div>
+          <div class="tl-expand-content">
+            <div class="expand-block">
+              <div class="expand-block-label">Final response to user</div>
+              <div class="expand-block-val">"I summarized the Q3 report successfully, but was unable to send the email — the mail server timed out. Please check SMTP connectivity and try again."</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7. Session ended -->
+      <div class="tl-item" style="animation-delay:0.35s">
+        <div class="tl-left">
+          <div class="tl-icon err">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="9" y="9" width="6" height="6"/></svg>
+          </div>
+        </div>
+        <div class="tl-body err-card" style="border-color:var(--red-border)">
+          <div class="tl-top-row">
+            <span class="tl-title err">Session ended — errored</span>
+            <div class="tl-meta">
+              <span class="tl-offset">+33,382ms</span>
+              <span class="tl-dur err">9.4s wall</span>
+            </div>
+          </div>
+          <div class="tl-summary">
+            <span style="color:var(--text-3);">6 LLM calls &nbsp;·&nbsp; 24 tool calls &nbsp;·&nbsp; 1 unresolved error</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<script>
+function toggle(el) {
+  el.classList.toggle('expanded');
+}
+// Stagger animations
+document.querySelectorAll('.tl-item').forEach((el, i) => {
+  el.style.animationDelay = (0.04 + i * 0.06) + 's';
+});
+</script>
+</body>
+</html>

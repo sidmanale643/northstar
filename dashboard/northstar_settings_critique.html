@@ -1,0 +1,133 @@
+
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  .wrap { font-family: var(--font-sans); padding: 1.5rem 0; display: flex; flex-direction: column; gap: 2rem; }
+  .section-label { font-size: 11px; font-weight: 500; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.07em; margin: 0 0 10px; }
+  .issue-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 0; }
+  .issue { display: flex; gap: 10px; align-items: flex-start; background: var(--color-background-secondary); border-radius: 8px; padding: 10px 12px; }
+  .issue-tag { font-size: 11px; font-weight: 500; border-radius: 4px; padding: 2px 7px; white-space: nowrap; flex-shrink: 0; margin-top: 1px; }
+  .tag-ux { background: #FAEEDA; color: #633806; }
+  .tag-info { background: #E6F1FB; color: #0C447C; }
+  .tag-hier { background: #EEEDFE; color: #3C3489; }
+  .issue-text { font-size: 13px; color: var(--color-text-primary); line-height: 1.5; }
+  .divider { height: 0.5px; background: var(--color-border-tertiary); }
+  .redesign-label { font-size: 11px; font-weight: 500; color: #0F6E56; text-transform: uppercase; letter-spacing: 0.07em; margin: 0 0 12px; }
+
+  .mock { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: 10px; padding: 20px 24px; display: flex; flex-direction: column; gap: 20px; }
+  .mock-section { display: flex; flex-direction: column; gap: 10px; }
+  .mock-section-head { display: flex; align-items: center; gap: 8px; padding-bottom: 10px; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .mock-section-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin: 0; }
+  .mock-section-icon { color: #1D9E75; font-size: 16px; }
+  .field-group { display: flex; flex-direction: column; gap: 4px; }
+  .field-label { font-size: 12px; color: var(--color-text-secondary); font-weight: 500; }
+  .field-desc { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  .field-row { display: flex; gap: 8px; align-items: center; }
+  .field-input { flex: 1; border: 0.5px solid var(--color-border-secondary); border-radius: 6px; background: var(--color-background-secondary); padding: 7px 10px; font-size: 13px; color: var(--color-text-primary); font-family: var(--font-mono); }
+  .field-input.readonly { color: var(--color-text-secondary); }
+  .badge-readonly { font-size: 11px; background: var(--color-background-secondary); border: 0.5px solid var(--color-border-secondary); color: var(--color-text-secondary); border-radius: 4px; padding: 2px 6px; }
+  .btn-primary { background: #1D9E75; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .btn-outline { background: transparent; border: 0.5px solid var(--color-border-secondary); border-radius: 6px; padding: 7px 12px; font-size: 13px; color: var(--color-text-primary); cursor: pointer; display: flex; align-items: center; gap: 5px; }
+  .sdk-card { background: var(--color-background-secondary); border-radius: 8px; padding: 12px 14px; }
+  .sdk-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .sdk-card-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); display: flex; align-items: center; gap: 6px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #1D9E75; display: inline-block; }
+  .sdk-val { font-family: var(--font-mono); font-size: 12px; color: var(--color-text-secondary); }
+  .sdk-actions { display: flex; gap: 6px; }
+  .btn-icon { background: transparent; border: 0.5px solid var(--color-border-tertiary); border-radius: 5px; padding: 4px 8px; font-size: 12px; color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; gap: 4px; }
+  .hint { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
+  .api-empty { border: 1.5px dashed var(--color-border-secondary); border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; }
+  .api-empty-text { font-size: 13px; color: var(--color-text-secondary); }
+</style>
+<div class="wrap">
+
+  <div>
+    <p class="section-label">Issues found</p>
+    <div class="issue-list">
+      <div class="issue">
+        <span class="issue-tag tag-hier">hierarchy</span>
+        <span class="issue-text">The "API key" section header uses the same visual weight as "Project" — but API key is the primary action on this page. It should feel more prominent.</span>
+      </div>
+      <div class="issue">
+        <span class="issue-tag tag-ux">ux</span>
+        <span class="issue-text">The "Create API key" button sits below an empty input field with placeholder text. The empty field implies there's already a key to view — the empty state should skip the field entirely and just show the button with a short explanation.</span>
+      </div>
+      <div class="issue">
+        <span class="issue-tag tag-info">clarity</span>
+        <span class="issue-text">The SDK setup note ("Configure your SDK with NORTHSTAR_API_KEY and NORTHSTAR_PROJECT_ID…") appears before the key is created — it's premature. Show it after key generation.</span>
+      </div>
+      <div class="issue">
+        <span class="issue-tag tag-ux">ux</span>
+        <span class="issue-text">The "Save" button is inline next to the project name input. A floating save button next to a single field is unusual — prefer an explicit save action at the bottom of the section, or auto-save on blur.</span>
+      </div>
+      <div class="issue">
+        <span class="issue-tag tag-hier">hierarchy</span>
+        <span class="issue-text">Workspace ID is labeled "read-only" but still shown as an editable-looking input field. A read-only value like this is better rendered as a plain code snippet with a copy button.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div>
+    <p class="redesign-label">Suggested redesign</p>
+    <div class="mock">
+
+      <div class="mock-section">
+        <div class="mock-section-head">
+          <i class="ti ti-key mock-section-icon" aria-hidden="true"></i>
+          <p class="mock-section-title">API key</p>
+        </div>
+        <div class="api-empty">
+          <span class="api-empty-text">No API key yet — create one to start sending traces.</span>
+          <button class="btn-primary"><i class="ti ti-plus" style="font-size:13px;" aria-hidden="true"></i> Create API key</button>
+        </div>
+      </div>
+
+      <div class="mock-section">
+        <div class="mock-section-head">
+          <i class="ti ti-database mock-section-icon" aria-hidden="true"></i>
+          <p class="mock-section-title">SDK project ID</p>
+        </div>
+        <div class="sdk-card">
+          <div class="sdk-card-head">
+            <span class="sdk-card-title"><span class="dot"></span> ready</span>
+            <div class="sdk-actions">
+              <button class="btn-icon"><i class="ti ti-file-dots" style="font-size:13px;" aria-hidden="true"></i> Add to .env</button>
+              <button class="btn-icon"><i class="ti ti-copy" style="font-size:13px;" aria-hidden="true"></i> Copy</button>
+            </div>
+          </div>
+          <p class="sdk-val">NORTHSTAR_PROJECT_ID=mixuenvuqwrsmmgbrwvv</p>
+        </div>
+        <p class="hint">Pass this as <code>NORTHSTAR_PROJECT_ID</code> in your SDK config. The workspace ID below is for admin use only — do not pass it to the SDK.</p>
+      </div>
+
+      <div class="mock-section">
+        <div class="mock-section-head">
+          <i class="ti ti-settings mock-section-icon" aria-hidden="true"></i>
+          <p class="mock-section-title">Project</p>
+        </div>
+        <div class="field-group">
+          <span class="field-label">Project name</span>
+          <div class="field-row">
+            <input class="field-input" value="research-agent" style="max-width: 280px;" />
+            <button class="btn-primary"><i class="ti ti-check" style="font-size:13px;" aria-hidden="true"></i> Save</button>
+          </div>
+        </div>
+        <div class="field-group" style="margin-top:12px;">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span class="field-label">Workspace ID</span>
+            <span class="badge-readonly">read-only</span>
+          </div>
+          <div class="field-row">
+            <code style="font-size:12px;color:var(--color-text-secondary);background:var(--color-background-secondary);border-radius:6px;padding:7px 10px;font-family:var(--font-mono);">proj_a3f9c1d8e27b</code>
+            <button class="btn-icon"><i class="ti ti-copy" style="font-size:13px;" aria-hidden="true"></i></button>
+          </div>
+          <p class="field-desc">Identifies this project in dashboard and admin operations. Use the SDK project ID above for traces.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>

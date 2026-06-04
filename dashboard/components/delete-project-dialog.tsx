@@ -15,11 +15,11 @@ export function DeleteProjectDialog({
   if (!project) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#18352d]/25 px-4" role="presentation" onMouseDown={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#18352d]/25 px-4 ns-backdrop-enter" role="presentation" onMouseDown={onCancel}>
       <section
         aria-labelledby="delete-project-title"
         aria-modal="true"
-        className="ns-panel w-full max-w-md p-4 shadow-[0_20px_60px_rgb(24_53_45_/_0.18)]"
+        className="ns-panel ns-dialog-enter w-full max-w-md p-4 shadow-[0_20px_60px_rgb(24_53_45_/_0.18)]"
         role="dialog"
         onMouseDown={(event) => event.stopPropagation()}
       >
