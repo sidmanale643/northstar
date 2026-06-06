@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { GoogleIcon } from '@/components/ui/google-icon'
 import { Loader2, ArrowLeft, CheckCircle2, Mail } from 'lucide-react'
+import { LoginLanding } from '@/components/landing/LoginLanding'
 
 type View = 'signin' | 'signup' | 'forgot-password' | 'check-email' | 'reset-email-sent'
 
@@ -52,16 +53,32 @@ export default function LoginPage() {
 
 function LoginPageContent() {
   const searchParams = useSearchParams()
-  const initialView: View = searchParams.get('mode') === 'signup' ? 'signup' : 'signin'
+  const modeParam = searchParams.get('mode')
+  const errorParam = searchParams.get('error')
   const nextPath = searchParams.get('next') ?? '/projects'
-  const urlError = searchParams.get('error')
 
+  if (!modeParam && !errorParam) {
+    return <LoginLanding nextPath={nextPath} />
+  }
+
+  return <AuthForm initialView={modeParam === 'signup' ? 'signup' : 'signin'} nextPath={nextPath} errorParam={errorParam} />
+}
+
+function AuthForm({
+  initialView,
+  nextPath,
+  errorParam,
+}: {
+  initialView: View
+  nextPath: string
+  errorParam: string | null
+}) {
   const [view, setView] = useState<View>(initialView)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [error, setError] = useState(urlError ? ERROR_MESSAGES[urlError] ?? urlError : '')
+  const [error, setError] = useState(errorParam ? ERROR_MESSAGES[errorParam] ?? errorParam : '')
 
   const getRedirectTo = () =>
     `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`
