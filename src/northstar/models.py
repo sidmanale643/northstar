@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from enum import StrEnum
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, ParamSpec, TypeVar
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
 
 if TYPE_CHECKING:
     from .client import Northstar
+
+from . import pricing  # noqa: E402
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -61,11 +70,45 @@ class EventType(StrEnum):
     CUSTOM = "custom"
 
 
+class Score(NorthstarModel):
+    id: UUID = Field(default_factory=uuid4)
+    trace_id: UUID
+    span_id: UUID | None = None
+    name: str
+    value: float = Field(allow_inf_nan=False)
+    data_type: Literal["numeric", "categorical", "boolean"]
+    string_value: str | None = None
+    source: Literal["api"] = "api"
+    comment: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("name must not be blank")
+        return value
+
+    @model_validator(mode="after")
+    def validate_value_shape(self) -> Score:
+        if self.data_type == "categorical":
+            if self.string_value is None:
+                raise ValueError("categorical scores require string_value")
+        elif self.string_value is not None:
+            raise ValueError("string_value is only valid for categorical scores")
+
+        if self.data_type == "boolean" and self.value not in (0.0, 1.0):
+            raise ValueError("boolean score value must be 0.0 or 1.0")
+        return self
+
+
 def should_capture(capture: CaptureOptions, event_type: EventType) -> bool:
     if event_type == EventType.USER_INPUT:
         return capture.user_input
     if event_type == EventType.SYSTEM_MESSAGE:
         return capture.system_messages
+    if event_type == EventType.ASSISTANT_MESSAGE:
+        return capture.assistant_messages
     if event_type == EventType.REASONING:
         return capture.reasoning
     if event_type == EventType.TOOL_ARGUMENTS:
@@ -77,9 +120,48 @@ def should_capture(capture: CaptureOptions, event_type: EventType) -> bool:
     return True
 
 
+def _message_tool_calls(message: Mapping[str, Any]) -> list[dict[str, Any]]:
+    calls: list[dict[str, Any]] = []
+    for raw_tool_call in message.get("tool_calls") or []:
+        if not isinstance(raw_tool_call, Mapping):
+            continue
+
+        function = raw_tool_call.get("function")
+        if isinstance(function, Mapping):
+            calls.append(
+                {
+                    "id": raw_tool_call.get("id"),
+                    "name": function.get("name") or raw_tool_call.get("name"),
+                    "arguments": function.get("arguments"),
+                }
+            )
+            continue
+
+        calls.append(
+            {
+                "id": raw_tool_call.get("id"),
+                "name": raw_tool_call.get("name"),
+                "arguments": raw_tool_call.get("arguments"),
+            }
+        )
+    return calls
+
+
+def _message_tool_attributes(message: Mapping[str, Any]) -> dict[str, Any]:
+    attributes: dict[str, Any] = {}
+    tool_call_id = message.get("tool_call_id") or message.get("id")
+    name = message.get("name")
+    if tool_call_id is not None:
+        attributes["tool_call_id"] = str(tool_call_id)
+    if name is not None:
+        attributes["name"] = str(name)
+    return attributes
+
+
 class CaptureOptions(NorthstarModel):
     user_input: bool = False
     system_messages: bool = False
+    assistant_messages: bool = False
     reasoning: bool = False
     tool_arguments: bool = False
     tool_results: bool = False
@@ -151,6 +233,8 @@ class Run(NorthstarModel):
     _client: Northstar | None = PrivateAttr(default=None)
     _session: Session | None = PrivateAttr(default=None)
     _active_spans: list[Span] = PrivateAttr(default_factory=list)
+    _spans: list[Span] = PrivateAttr(default_factory=list)
+    _events: list[Event] = PrivateAttr(default_factory=list)
 
     def __enter__(self) -> Run:
         return self
@@ -165,12 +249,13 @@ class Run(NorthstarModel):
 
         self.ended_at = utc_now()
         if exc is None:
-            self.status = RunStatus.OK
-            self.error = None
+            if self.error is None:
+                self.status = RunStatus.OK
         else:
             self.status = RunStatus.ERROR
             self.error = exception_to_error(exc)
 
+        self._aggregate_model_costs()
         self._require_client()._enqueue_run(self)
         return False
 
@@ -265,6 +350,30 @@ class Run(NorthstarModel):
             attributes=attributes,
         )
 
+    def record_assistant_message(
+        self,
+        content: Any,
+        *,
+        attributes: dict[str, Any] | None = None,
+    ) -> Event | None:
+        return self._record_event(
+            EventType.ASSISTANT_MESSAGE,
+            content,
+            attributes=attributes,
+        )
+
+    def record_tool_result(
+        self,
+        content: Any,
+        *,
+        attributes: dict[str, Any] | None = None,
+    ) -> Event | None:
+        return self._record_event(
+            EventType.TOOL_RESULT,
+            content,
+            attributes=attributes,
+        )
+
     def record_final_response(
         self,
         content: Any,
@@ -276,6 +385,11 @@ class Run(NorthstarModel):
             content,
             attributes=attributes,
         )
+
+    def record_error(self, exc: BaseException) -> None:
+        self.status = RunStatus.ERROR
+        self.error = exception_to_error(exc)
+        self._require_client()._enqueue_run(self)
 
     def record_custom_event(
         self,
@@ -308,8 +422,36 @@ class Run(NorthstarModel):
         )
         span._client = self._require_client()
         span._run = self
+        self._spans.append(span)
         span._client._enqueue_span(span)
         return span
+
+    def _aggregate_model_costs(self) -> None:
+        total_cost = 0.0
+        total_input = 0
+        total_output = 0
+        has_cost = False
+        for span in self._spans:
+            if span.kind != SpanKind.MODEL:
+                continue
+            attributes = span.attributes
+            cost = attributes.get("cost_usd")
+            if isinstance(cost, (int, float)):
+                total_cost += float(cost)
+                has_cost = True
+            input_tokens = attributes.get("input_tokens")
+            if isinstance(input_tokens, int):
+                total_input += input_tokens
+            output_tokens = attributes.get("output_tokens")
+            if isinstance(output_tokens, int):
+                total_output += output_tokens
+
+        if has_cost:
+            self.metadata["cost_usd"] = total_cost
+        if total_input:
+            self.metadata["total_input_tokens"] = total_input
+        if total_output:
+            self.metadata["total_output_tokens"] = total_output
 
     def _record_event(
         self,
@@ -330,8 +472,39 @@ class Run(NorthstarModel):
             content=content,
             attributes=attributes or {},
         )
+        self._events.append(event)
         client._enqueue_event(event)
         return event
+
+    def events(self) -> list[Event]:
+        recorded = list(self._events)
+        client = self._client
+        if client is None:
+            return recorded
+        seen = {event.id for event in recorded}
+        for event in client._pending_events.values():
+            if event.run_id == self.id and event.id not in seen:
+                recorded.append(event)
+                seen.add(event.id)
+        recorded.sort(key=lambda event: event.created_at)
+        return recorded
+
+    def replay(self, *, tools: dict[str, Callable[..., Any]] | None = None):
+        from .replay import Replay
+
+        return Replay(self, tools=tools)
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: dict[str, Any],
+        run_id: str | UUID,
+        *,
+        session: Session | None = None,
+    ) -> Run:
+        from .replay import _reconstruct_run
+
+        return _reconstruct_run(payload, run_id, session=session)
 
     def _push_span(self, span: Span) -> None:
         self._active_spans.append(span)
@@ -452,6 +625,102 @@ class Span(NorthstarModel):
             content,
             attributes=attributes,
         )
+
+    def record_usage(
+        self,
+        *,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        source: str = "litellm",
+    ) -> float | None:
+        total_tokens = prompt_tokens + completion_tokens
+        self.attributes["model"] = model
+        self.attributes["input_tokens"] = prompt_tokens
+        self.attributes["output_tokens"] = completion_tokens
+        self.attributes["total_tokens"] = total_tokens
+
+        cost = pricing.cost_for(model, prompt_tokens, completion_tokens)
+        if cost is not None:
+            self.attributes["cost_usd"] = cost
+            self.attributes["pricing_source"] = source
+        else:
+            self.attributes["pricing_source"] = "unknown"
+
+        self._require_client()._enqueue_span(self)
+        return cost
+
+    def record_input_messages(self, model: str, messages: list) -> int:
+        tokens = pricing.count_tokens(model, messages)
+        self.attributes["model"] = model
+        self.attributes["input_tokens"] = tokens
+        self.attributes["total_tokens"] = (
+            self.attributes.get("output_tokens", 0) + tokens
+        )
+        for message in messages:
+            self._record_message(message)
+        self._require_client()._enqueue_span(self)
+        return tokens
+
+    def record_output_message(self, model: str, message: Any) -> int:
+        content = message
+        if isinstance(message, Mapping):
+            content = message.get("content", message)
+        if not isinstance(content, list):
+            tokens = pricing.count_tokens(model, content)
+        else:
+            tokens = pricing.count_tokens(model, content)
+
+        prompt_tokens = self.attributes.get("input_tokens")
+        self.attributes["model"] = model
+        self.attributes["output_tokens"] = tokens
+        self.attributes["total_tokens"] = (
+            (prompt_tokens if isinstance(prompt_tokens, int) else 0) + tokens
+        )
+
+        cost: float | None = None
+        if isinstance(prompt_tokens, int):
+            cost = pricing.cost_for(model, prompt_tokens, tokens)
+            if cost is not None:
+                self.attributes["cost_usd"] = cost
+                self.attributes["pricing_source"] = "litellm"
+            else:
+                self.attributes["pricing_source"] = "unknown"
+
+        self._record_message(message)
+        self._require_client()._enqueue_span(self)
+        return tokens
+
+    def _record_message(self, message: Any) -> None:
+        if not isinstance(message, Mapping):
+            return
+
+        role = message.get("role")
+        content = message.get("content")
+        if role == "system" and content is not None:
+            self._record_event(EventType.SYSTEM_MESSAGE, content)
+            return
+        if role == "user" and content is not None:
+            self._record_event(EventType.USER_INPUT, content)
+            return
+        if role == "tool":
+            self._record_event(
+                EventType.TOOL_RESULT,
+                content,
+                attributes=_message_tool_attributes(message),
+            )
+            return
+        if role != "assistant":
+            return
+
+        if content is not None:
+            self._record_event(EventType.ASSISTANT_MESSAGE, content)
+        for tool_call in _message_tool_calls(message):
+            self._record_event(
+                EventType.TOOL_ARGUMENTS,
+                tool_call,
+                attributes=_message_tool_attributes(tool_call),
+            )
 
     def _record_event(
         self,

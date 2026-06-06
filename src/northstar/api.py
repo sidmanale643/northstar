@@ -6,7 +6,8 @@ import json
 import os
 import sys
 import threading
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import asdict, is_dataclass
 from functools import wraps
@@ -89,6 +90,63 @@ def _validate_metric_value(value: Any) -> None:
         raise TypeError("metric value must be numeric")
 
 
+class ModelSpan:
+    def __init__(self, span: Span, model: str) -> None:
+        self._span = span
+        self._model = model
+
+    @property
+    def id(self) -> UUID:
+        return self._span.id
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    def record_input_messages(self, messages: list) -> int:
+        return self._span.record_input_messages(self._model, messages)
+
+    def record_output_message(self, message: Any) -> int:
+        return self._span.record_output_message(self._model, message)
+
+    def record_usage(
+        self,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+        source: str = "litellm",
+    ) -> float | None:
+        return self._span.record_usage(
+            model=self._model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            source=source,
+        )
+
+
+class _NoopModelSpan:
+    id: None = None
+    model: str = ""
+
+    def record_input_messages(self, messages: list) -> int:
+        del messages
+        return 0
+
+    def record_output_message(self, message: Any) -> int:
+        del message
+        return 0
+
+    def record_usage(
+        self,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+        source: str = "litellm",
+    ) -> float | None:
+        del prompt_tokens, completion_tokens, source
+        return None
+
+
 class _NoopTrace:
     id: None = None
 
@@ -160,6 +218,9 @@ class _TraceHandle:
     def log_metadata(self, metadata: Mapping[str, Any]) -> None:
         self._state.log_metadata(metadata)
 
+    def model_call(self, name: str, *, model: str) -> _ModelCallContext:
+        return _open_model_call(self._run, name, model=model)
+
 
 class _SpanHandle:
     def __init__(self, state: _SDKState, span: Span) -> None:
@@ -195,6 +256,10 @@ _current_span: ContextVar[_SpanHandle | None] = ContextVar(
     "northstar_current_span",
     default=None,
 )
+_current_model_span: ContextVar[Span | None] = ContextVar(
+    "northstar_current_model_span",
+    default=None,
+)
 
 
 class _SDKState:
@@ -226,6 +291,7 @@ class _SDKState:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._worker: threading.Thread | None = None
+        self._session: Session | None = None
 
         if self.client is not None:
             self._worker = threading.Thread(
@@ -306,6 +372,9 @@ class _SDKState:
         self._wake.set()
         if self._worker is not None and self._worker is not threading.current_thread():
             self._worker.join(timeout=self.flush_interval + 1)
+        if self.client is not None and self._session is not None:
+            self._session.ended_at = utc_now()
+            self.client._enqueue_session(self._session)
         self._flush_now()
 
     def start_trace(
@@ -338,7 +407,9 @@ class _SDKState:
 
             handle: _TraceHandle | None = None
             try:
-                session = self.client.session()
+                if self._session is None:
+                    self._session = self.client.session()
+                session = self._session
                 run = session.run(
                     name,
                     metadata=_json_safe(run_metadata, self.redact_keys),
@@ -405,8 +476,6 @@ class _SDKState:
                         self.redact_keys,
                     )
                 self.client._enqueue_run(trace._run)
-                trace._session.ended_at = utc_now()
-                self.client._enqueue_session(trace._session)
                 self._schedule_flush()
             except Exception as finish_exc:
                 self._warn(f"failed to finish trace: {finish_exc}")
@@ -669,6 +738,7 @@ def init(
             capture=CaptureOptions(
                 user_input=True,
                 system_messages=True,
+                assistant_messages=True,
                 reasoning=True,
                 tool_arguments=True,
                 tool_results=True,
@@ -690,8 +760,7 @@ def init(
     )
     if resolved_enabled and client is None:
         new_state._warn(
-            "disabled because NORTHSTAR_API_KEY and NORTHSTAR_PROJECT_ID "
-            "(or NORTHSTAR_ENDPOINT) are required"
+            "disabled because NORTHSTAR_API_KEY and NORTHSTAR_PROJECT_ID are required"
         )
 
     global _state
@@ -699,6 +768,39 @@ def init(
         old_state = _state
         _state = new_state
     old_state.shutdown()
+
+
+def init_logger(
+    *,
+    api_key: str,
+    project: str,
+    project_id: str | None = None,
+    endpoint: str | None = None,
+    environment: str | None = None,
+    enabled: bool | None = None,
+    debug: bool | None = None,
+    capture_inputs: bool = True,
+    capture_outputs: bool = True,
+    redact_keys: Iterable[str] | None = None,
+    batch_size: int = 50,
+    flush_interval: float = 5.0,
+    max_queue_size: int = 1000,
+) -> None:
+    init(
+        api_key=api_key,
+        project_id=project_id,
+        endpoint=endpoint,
+        project=project,
+        environment=environment,
+        enabled=enabled,
+        debug=debug,
+        capture_inputs=capture_inputs,
+        capture_outputs=capture_outputs,
+        redact_keys=redact_keys,
+        batch_size=batch_size,
+        flush_interval=flush_interval,
+        max_queue_size=max_queue_size,
+    )
 
 
 class _TraceFactory:
@@ -907,6 +1009,39 @@ def span(
     )
 
 
+def _open_model_call(
+    target: Run,
+    name: str,
+    *,
+    model: str,
+) -> Iterator[ModelSpan]:
+    span = target.span(name, kind=SpanKind.MODEL, attributes={"model": model})
+    with span as inner:
+        token = _current_model_span.set(inner)
+        try:
+            yield ModelSpan(inner, model)
+        finally:
+            _current_model_span.reset(token)
+
+
+@contextmanager
+def model_call(
+    name: str,
+    *,
+    model: str,
+    run: Run | None = None,
+) -> Iterator[ModelSpan | _NoopModelSpan]:
+    if run is not None:
+        yield from _open_model_call(run, name, model=model)
+        return
+
+    trace_handle = _current_trace.get()
+    if trace_handle is None or trace_handle._state.client is None:
+        yield _NoopModelSpan()
+        return
+    yield from _open_model_call(trace_handle._run, name, model=model)
+
+
 def log_event(name: str, data: Any = None) -> None:
     _active_state().log_event(name, data)
 
@@ -922,6 +1057,10 @@ def log_metadata(metadata: Mapping[str, Any]) -> None:
 def current_trace_id() -> str | None:
     trace_handle = _current_trace.get()
     return str(trace_handle.id) if trace_handle is not None else None
+
+
+def _active_prompt_span() -> Span | None:
+    return _current_model_span.get()
 
 
 def flush(timeout: float | None = None) -> bool:

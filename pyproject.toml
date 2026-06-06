@@ -3,9 +3,9 @@ requires = ["setuptools>=69.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "northstar"
+name = "northstar-ai"
 version = "0.1.0"
-description = "Add your description here"
+description = "Observability, debugging, and evaluation for AI agents"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -20,6 +20,12 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "respx>=0.20.0",
+]
+pricing = [
+    "litellm>=1.50.0",
+]
+evals = [
+    "litellm>=1.50.0",
 ]
 
 [tool.setuptools]
