@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { Suspense, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -27,6 +27,14 @@ const ERROR_MESSAGES: Record<string, string> = {
 }
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
+  )
+}
+
+function LoginPageContent() {
   const searchParams = useSearchParams()
   const initialMode: Mode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin'
   const nextPath = searchParams.get('next') ?? '/projects'

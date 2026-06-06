@@ -12,6 +12,7 @@ import { ScorePanel } from '@/components/scores/score-panel'
 import { PromptVersionBadge } from '@/components/prompts/prompt-version-badge'
 import { PromptVersionSidePanel } from '@/components/prompts/prompt-version-side-panel'
 import type { DashboardSpan, DashboardToolCall, DashboardTrace, DashboardTraceEvent, DashboardTracePromptLink, EvalDatasetSummary, Json } from '@/lib/supabase/types'
+import type { ProjectId } from '@/lib/projects'
 import { format } from 'date-fns'
 
 type SpanType = 'agent' | 'llm' | 'tool' | 'eval'
@@ -819,7 +820,8 @@ export function TraceInspector({
           }}
           link={sidePanelLink}
           promptId={promptIdByLink[sidePanelLink.prompt_id] ?? sidePanelLink.prompt_id}
-          projectId={projectId}
+          projectId={projectId as ProjectId}
+          hasProdVersion={Boolean(parseLabels(sidePanelLink.labels).includes('prod'))}
           versionContent={promptVersionContent[sidePanelLink.prompt_version_id] ?? ''}
           model={promptVersionMeta[sidePanelLink.prompt_version_id]?.model ?? null}
           temperature={promptVersionMeta[sidePanelLink.prompt_version_id]?.temperature ?? null}
@@ -842,6 +844,15 @@ function dedupeLinksByVersion(links: DashboardTracePromptLink[]): DashboardTrace
     if (seen.has(link.prompt_version_id)) continue
     seen.add(link.prompt_version_id)
     out.push(link)
+  }
+  return out
+}
+
+function parseLabels(value: Json): string[] {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return []
+  const out: string[] = []
+  for (const [key, raw] of Object.entries(value as Record<string, Json | undefined>)) {
+    if (typeof raw === 'string' && raw.length > 0) out.push(key)
   }
   return out
 }
