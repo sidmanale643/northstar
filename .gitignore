@@ -21,3 +21,19 @@ dashboard/*.tsbuildinfo
 # Local tool state
 .commandcode/
 .terminus-cli/
+.bt/
+.DS_Store
+
+braintrust-design
+getmaxim-design
+datasets/_run_terminus_evals.py
+datasets/terminus_cli_evals.jsonl
+datasets/test_agent_evals.jsonl
+prototypes/agent-trajectory/index.html
+prototypes/agent-trajectory/option-1-map.html
+prototypes/agent-trajectory/option-2-swimlanes.html
+prototypes/agent-trajectory/option-3-replay.html
+prototypes/agent-trajectory/option-4-graph.html
+prototypes/agent-trajectory/option-5-notebook.html
+prototypes/agent-trajectory/variants.json
+.env
