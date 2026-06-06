@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { TraceTimeline } from '@/components/trace-timeline'
 import { ProjectContextLabel } from '@/components/project-context-label'
 import { CostStat } from '@/components/cost-stat'
+import { PolarisPanel } from '@/components/polaris-panel'
 import { cn } from '@/lib/utils'
 import {
   attachToolCalls,
@@ -126,6 +127,8 @@ export default async function SessionPage({ params }: { params: { projectId: str
           size={errorCount > 0 ? 'sm' : 'md'}
         />
       </div>
+
+      <PolarisPanel projectId={projectId} scope="session" targetId={session.id} />
 
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Bell,
@@ -15,6 +15,7 @@ import {
   KeyRound,
   Mail,
   Pencil,
+  Play,
   Plus,
   Receipt,
   RefreshCw,
@@ -36,6 +37,7 @@ import {
   type ProviderKeyProvider,
   type ProviderKeyStatus,
 } from '@/lib/provider-key-config'
+import type { DashboardAlertRule, DashboardWebhook } from '@/lib/supabase/types'
 
 const _SUPABASE_PROJECT_REF_RE = /^https?:\/\/([a-z0-9]+)\.supabase\.co\/?$/i
 
@@ -582,24 +584,272 @@ function ProviderKeysSettings() {
 }
 
 function AlertSettings() {
+  const project = useActiveProject()
+  const [rules, setRules] = useState<DashboardAlertRule[]>([])
+  const [webhooks, setWebhooks] = useState<DashboardWebhook[]>([])
+  const [newUrl, setNewUrl] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!project.backendId) {
+      setLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    setLoading(true)
+    Promise.all([
+      fetch(`/api/projects/${project.id}/alert-rules`, { cache: 'no-store', signal: controller.signal }).then(async (r) => {
+        if (!r.ok) throw new Error('Failed to load alert rules')
+        return r.json() as Promise<{ rules: DashboardAlertRule[] }>
+      }),
+      fetch(`/api/projects/${project.id}/webhooks`, { cache: 'no-store', signal: controller.signal }).then(async (r) => {
+        if (!r.ok) throw new Error('Failed to load webhooks')
+        return r.json() as Promise<{ webhooks: DashboardWebhook[] }>
+      }),
+    ])
+      .then(([rulesRes, hooksRes]) => {
+        setRules(rulesRes.rules)
+        setWebhooks(hooksRes.webhooks)
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Load failed')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [project.backendId, project.id])
+
+  const rulesByKind = useMemo(() => {
+    const map = new Map<string, DashboardAlertRule>()
+    for (const r of rules) map.set(r.kind, r)
+    return map
+  }, [rules])
+
+  async function toggleRule(kind: 'error_rate' | 'latency_p95' | 'token_budget', current: boolean) {
+    if (!project.backendId) return
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const existing = rulesByKind.get(kind)
+      if (existing) {
+        const res = await fetch(`/api/projects/${project.id}/alert-rules/${existing.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: !current }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(typeof body === 'object' && body?.error ? String(body.error) : 'Toggle failed')
+        }
+        const { rule } = (await res.json()) as { rule: DashboardAlertRule }
+        setRules((rs) => rs.map((r) => (r.id === rule.id ? rule : r)))
+        setMessage(`${RULE_LABELS[kind]} ${rule.enabled ? 'enabled' : 'disabled'}.`)
+      } else {
+        const res = await fetch(`/api/projects/${project.id}/alert-rules`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind, enabled: !current }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => null)
+          throw new Error(typeof body === 'object' && body?.error ? String(body.error) : 'Create failed')
+        }
+        const { rule } = (await res.json()) as { rule: DashboardAlertRule }
+        setRules((rs) => [...rs, rule])
+        setMessage(`${RULE_LABELS[kind]} ${rule.enabled ? 'enabled' : 'disabled'}.`)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function addWebhook() {
+    if (!project.backendId) return
+    if (!newUrl.startsWith('https://') && !(process.env.NODE_ENV !== 'production' && /^http:\/\/localhost(:\d+)?\//.test(newUrl))) {
+      setError('Webhook URL must start with https:// (or http://localhost in dev).')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/projects/${project.id}/webhooks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: newUrl }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(typeof body === 'object' && body?.error ? String(body.error) : 'Create failed')
+      }
+      const { webhook } = (await res.json()) as { webhook: DashboardWebhook }
+      setWebhooks((ws) => [webhook, ...ws])
+      setNewUrl('')
+      setMessage('Webhook added.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteWebhook(id: string) {
+    if (!project.backendId) return
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/projects/${project.id}/webhooks/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(typeof body === 'object' && body?.error ? String(body.error) : 'Delete failed')
+      }
+      setWebhooks((ws) => ws.filter((w) => w.id !== id))
+      setMessage('Webhook deleted.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function testFireWebhook(id: string) {
+    if (!project.backendId) return
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const res = await fetch(`/api/projects/${project.id}/webhooks/${id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(typeof body === 'object' && body?.error ? String(body.error) : 'Test fire failed')
+      }
+      const body = (await res.json()) as { log?: string }
+      setMessage(body.log ?? 'Test fire logged.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test fire failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!project.backendId) {
+    return (
+      <SettingsSection title="Alert rules" icon={Bell}>
+        <div className="ns-panel p-3.5 text-xs text-muted-foreground">
+          Create a NorthStar project API key first. Alert rules and webhooks are
+          stored against the connected backend project.
+        </div>
+      </SettingsSection>
+    )
+  }
+
   return (
     <>
       <SettingsSection title="Alert rules" icon={Bell}>
-        <ToggleRow label="Error rate spike" description="Alert when trace error rate exceeds 10% in a 5-minute window." checked />
-        <ToggleRow label="Latency threshold" description="Alert when p95 trace duration exceeds 5 seconds." checked />
-        <ToggleRow label="Token budget warning" description="Alert when session token usage exceeds 80% of plan quota." />
+        {loading && <p className="ns-settings-help">Loading…</p>}
+        {(Object.keys(RULE_LABELS) as Array<keyof typeof RULE_LABELS>).map((kind) => {
+          const rule = rulesByKind.get(kind)
+          const enabled = rule?.enabled ?? false
+          return (
+            <div key={kind} className="flex items-center justify-between border-b py-2.5 last:border-b-0">
+              <span>
+                <span className="block text-xs font-medium">{RULE_LABELS[kind]}</span>
+                <span className="mt-0.5 block text-[11px] text-muted-foreground">{RULE_DESCRIPTIONS[kind]}</span>
+              </span>
+              <label className="relative mt-0.5 h-5 w-[34px] shrink-0 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="peer sr-only"
+                  checked={enabled}
+                  disabled={saving}
+                  onChange={() => toggleRule(kind, enabled)}
+                />
+                <span className="absolute inset-0 rounded-full bg-[var(--ns-line)] transition-colors peer-checked:bg-primary" />
+                <span className="absolute left-[3px] top-[3px] h-3.5 w-3.5 rounded-full bg-white transition-transform peer-checked:translate-x-3.5" />
+              </label>
+            </div>
+          )
+        })}
       </SettingsSection>
+
       <SettingsSection title="Webhooks" icon={Webhook}>
-        <WebhookRow status="active" url="https://hooks.slack.com/services/T04X.../B07.../xK9..." />
-        <WebhookRow status="paused" url="https://api.pagerduty.com/v2/enqueue" />
+        {webhooks.length === 0 && !loading && (
+          <p className="ns-settings-help">No webhooks yet. Add one below.</p>
+        )}
+        {webhooks.map((w) => (
+          <div key={w.id} className="ns-panel mb-1.5 flex items-center gap-2 px-3 py-2">
+            <span className={cn('rounded-full border px-1.5 py-0.5 text-[10px]', w.status === 'active' ? 'border-emerald-200 bg-[var(--ns-green-pale)] text-[var(--ns-green-dark)]' : 'bg-secondary text-muted-foreground')}>
+              {w.status}
+            </span>
+            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">{w.url}</span>
+            <button
+              type="button"
+              className="ns-button px-2"
+              onClick={() => testFireWebhook(w.id)}
+              disabled={saving}
+              title="Test fire (logs to dev server console)"
+            >
+              <Play className="h-3 w-3" /> Test
+            </button>
+            <button
+              type="button"
+              className="ns-button px-2"
+              onClick={() => deleteWebhook(w.id)}
+              disabled={saving}
+              title="Delete webhook"
+              aria-label="Delete webhook"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
         <div className="mt-2.5 flex gap-2">
-          <input className="ns-input" placeholder="https://..." />
-          <DisabledButton primary><Plus />Add</DisabledButton>
+          <input
+            className="ns-input"
+            placeholder="https://..."
+            value={newUrl}
+            onChange={(e) => setNewUrl(e.target.value)}
+            disabled={saving}
+          />
+          <button
+            type="button"
+            className="ns-button ns-button-primary"
+            disabled={saving || !newUrl}
+            onClick={addWebhook}
+          >
+            <Plus /> Add
+          </button>
         </div>
+        {error && <p className="ns-settings-help text-red-700">{error}</p>}
+        {message && <p className="ns-settings-help text-[var(--ns-green-dark)]">{message}</p>}
         <p className="ns-settings-help">NorthStar will POST a JSON payload to these URLs when an alert triggers.</p>
       </SettingsSection>
     </>
   )
+}
+
+const RULE_LABELS: Record<'error_rate' | 'latency_p95' | 'token_budget', string> = {
+  error_rate: 'Error rate spike',
+  latency_p95: 'Latency threshold',
+  token_budget: 'Token budget warning',
+}
+
+const RULE_DESCRIPTIONS: Record<'error_rate' | 'latency_p95' | 'token_budget', string> = {
+  error_rate: 'Alert when trace error rate exceeds 10% in a 5-minute window.',
+  latency_p95: 'Alert when p95 trace duration exceeds 5 seconds.',
+  token_budget: 'Alert when session token usage exceeds 80% of plan quota.',
 }
 
 function TeamSettings() {
@@ -751,16 +1001,6 @@ function ToggleRow({ label, description, checked = false }: { label: string; des
         <span className="absolute left-[3px] top-[3px] h-3.5 w-3.5 rounded-full bg-white transition-transform peer-checked:translate-x-3.5" />
       </span>
     </label>
-  )
-}
-
-function WebhookRow({ status, url }: { status: 'active' | 'paused'; url: string }) {
-  return (
-    <div className="ns-panel mb-1.5 flex items-center gap-2 px-3 py-2">
-      <span className={cn('rounded-full border px-1.5 py-0.5 text-[10px]', status === 'active' ? 'border-emerald-200 bg-[var(--ns-green-pale)] text-[var(--ns-green-dark)]' : 'bg-secondary text-muted-foreground')}>{status}</span>
-      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-foreground">{url}</span>
-      <DisabledButton className="h-7 px-2"><Trash2 /></DisabledButton>
-    </div>
   )
 }
 

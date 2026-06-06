@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { ArrowDown, ArrowUp, ArrowUpDown, Layers3, Search, Wrench } from 'lucide-react'
@@ -9,6 +9,7 @@ import { formatUsd, hasCost } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { DashboardSession } from '@/lib/supabase/types'
 import { sessionHref, type ProjectId } from '@/lib/projects'
+import { useDebouncedValue } from '@/lib/use-debounced-value'
 import {
   buildSortHref,
   parseSessionsSort,
@@ -17,13 +18,16 @@ import {
   type SortDir,
 } from '@/lib/sort'
 
-type StatusFilter = 'all' | 'active' | 'completed' | 'last24h'
+type StatusFilter = 'all' | 'active' | 'completed' | 'last24h' | 'errored'
 
-const FILTERS: { value: StatusFilter; label: string }[] = [
+type FilterDef = { value: StatusFilter; label: string; tone?: 'default' | 'warn' }
+
+const FILTERS: FilterDef[] = [
   { value: 'all', label: 'All' },
   { value: 'active', label: 'Active' },
   { value: 'completed', label: 'Completed' },
   { value: 'last24h', label: 'Last 24h' },
+  { value: 'errored', label: 'Errored', tone: 'warn' },
 ]
 
 type ColumnDef = {
@@ -52,6 +56,7 @@ interface SessionsTableProps {
 export function SessionsTable({ projectId, sessions }: SessionsTableProps) {
   const [filter, setFilter] = useState<StatusFilter>('all')
   const [query, setQuery] = useState('')
+  const debouncedQuery = useDebouncedValue(query, 200)
 
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -60,18 +65,20 @@ export function SessionsTable({ projectId, sessions }: SessionsTableProps) {
   const filtered = useMemo(() => {
     const now = Date.now()
     const cutoff = now - 24 * 60 * 60 * 1000
-    const needle = query.trim().toLowerCase()
+    const needle = debouncedQuery.trim().toLowerCase()
     return sessions.filter((session) => {
       if (filter === 'active' && session.ended_at) return false
       if (filter === 'completed' && !session.ended_at) return false
       if (filter === 'last24h' && new Date(session.created_at).getTime() < cutoff) return false
+      if (filter === 'errored' && session.errored_count === 0) return false
       if (needle) {
+        // TODO(server-search): expand to trace.name + model when RPC joins available
         const haystack = `sess_${session.id}`.toLowerCase()
         if (!haystack.includes(needle)) return false
       }
       return true
     })
-  }, [sessions, filter, query])
+  }, [sessions, filter, debouncedQuery])
 
   const sorted = useMemo(() => sortSessions(filtered, sortSpec), [filtered, sortSpec])
 
@@ -96,10 +103,13 @@ export function SessionsTable({ projectId, sessions }: SessionsTableProps) {
               key={f.value}
               type="button"
               onClick={() => setFilter(f.value)}
+              title={f.tone === 'warn' ? 'Sessions with at least one errored run' : undefined}
               className={cn(
                 'rounded-full border px-3 py-1 text-[12px] transition-colors',
                 isOn
-                  ? 'border-[#5dcaa5] bg-[#e1f5ee] text-[#0f6e56]'
+                  ? f.tone === 'warn'
+                    ? 'border-[#f09595] bg-[#fcebeb] text-[#a32d2d]'
+                    : 'border-[#5dcaa5] bg-[#e1f5ee] text-[#0f6e56]'
                   : 'border-border bg-white text-muted-foreground hover:text-foreground'
               )}
             >
@@ -116,6 +126,7 @@ export function SessionsTable({ projectId, sessions }: SessionsTableProps) {
             placeholder="Search sessions…"
             className="h-7 w-[200px] rounded-md border bg-white px-2.5 font-mono text-[12px] outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-emerald-100"
           />
+          <span className="font-mono text-[10px] text-muted-foreground">Client-side filter · server search coming</span>
         </div>
       </div>
 

@@ -1,13 +1,14 @@
-import { AlertCircle, Brain, Play } from 'lucide-react'
+import { AlertCircle, Brain, Play, Wrench } from 'lucide-react'
 import Link from 'next/link'
 import { ModelCallRow } from '@/components/model-call-row'
 import { cn } from '@/lib/utils'
-import type { DashboardTraceWithToolCalls } from '@/lib/supabase/types'
+import type { DashboardToolCall, DashboardTraceWithToolCalls } from '@/lib/supabase/types'
 import { traceHref, type ProjectId } from '@/lib/projects'
 
 type TimelineEvent =
   | { type: 'start'; id: 'start'; timestamp: number }
   | { type: 'trace'; id: string; timestamp: number; trace: DashboardTraceWithToolCalls }
+  | { type: 'tool'; id: string; timestamp: number; toolCall: DashboardToolCall; parentTraceId: string }
 
 interface TraceTimelineProps {
   projectId: ProjectId
@@ -25,6 +26,16 @@ export function TraceTimeline({ projectId, traces, sessionStart }: TraceTimeline
   for (const trace of traces) {
     const traceMs = new Date(trace.created_at).getTime()
     events.push({ type: 'trace', id: trace.id, timestamp: traceMs, trace })
+    for (const toolCall of trace.tool_calls) {
+      const toolMs = new Date(toolCall.created_at).getTime()
+      events.push({
+        type: 'tool',
+        id: `${trace.id}:${toolCall.id}`,
+        timestamp: toolMs,
+        toolCall,
+        parentTraceId: trace.id,
+      })
+    }
   }
 
   events.sort((a, b) => a.timestamp - b.timestamp)
@@ -85,6 +96,43 @@ function TimelineItem({
             Run begins · waiting for first agent step
           </div>
         </div>
+      </div>
+    )
+  }
+
+  if (event.type === 'tool') {
+    const { toolCall, parentTraceId } = event
+    const isToolError = toolCall.error !== null
+    const tone: 'tool' | 'tool-error' = isToolError ? 'tool-error' : 'tool'
+    return (
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
+            tone === 'tool' && 'text-[#0c447c]',
+            tone === 'tool-error' && 'text-[#a32d2d]'
+          )}
+          style={iconStyle(tone)}
+        >
+          {isToolError ? <AlertCircle className="h-3.5 w-3.5" /> : <Wrench className="h-3.5 w-3.5" />}
+        </span>
+        <Link
+          href={traceHref(projectId, parentTraceId)}
+          className="flex-1 rounded-md bg-[var(--ns-panel)] px-3 py-2 hover:underline"
+          style={isToolError ? { border: '0.5px solid #f7c1c1' } : undefined}
+        >
+          <div className="flex items-center justify-between">
+            <span className={cn('text-[13px] font-medium', isToolError && 'text-[#a32d2d]')}>
+              {toolCall.name}
+            </span>
+            <span className="font-mono text-[11px] text-muted-foreground">+{offsetLabel}</span>
+          </div>
+          {isToolError && (
+            <div className="mt-0.5 truncate text-[11px] text-[#a32d2d]">
+              {stringifyError(toolCall.error)}
+            </div>
+          )}
+        </Link>
       </div>
     )
   }
@@ -161,11 +209,23 @@ function TimelineItem({
   return _exhaustive
 }
 
-function iconStyle(tone: 'llm' | 'error'): React.CSSProperties {
-  if (tone === 'error') {
-    return { background: '#fcebeb', color: '#a32d2d' }
+function iconStyle(tone: 'llm' | 'error' | 'tool' | 'tool-error'): React.CSSProperties {
+  switch (tone) {
+    case 'error':      return { background: '#fcebeb', color: '#a32d2d' }
+    case 'tool-error': return { background: '#fcebeb', color: '#a32d2d' }
+    case 'tool':       return { background: '#e6f1fb', color: '#0c447c' }
+    case 'llm':        return { background: '#eeedfe', color: '#534ab7' }
   }
-  return { background: '#eeedfe', color: '#534ab7' }
+}
+
+function stringifyError(error: unknown): string {
+  if (error == null) return ''
+  if (typeof error === 'string') return error
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
 }
 
 function formatOffset(ms: number): string {

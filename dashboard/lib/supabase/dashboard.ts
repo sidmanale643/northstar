@@ -7,23 +7,35 @@ import {
   type ProjectId,
 } from '@/lib/projects'
 import { createAdminClient } from './admin'
+import { toCsv } from '@/lib/csv'
 import type {
+  DashboardAlertRule,
   DashboardEvalDataset,
   DashboardEvalRun,
   DashboardEvalRunSummary,
+  DashboardPrompt,
+  DashboardPromptDetail,
+  DashboardPromptVersion,
   DashboardProjectCostSummary,
+  DashboardResolvedPrompt,
+  DashboardScore,
   DashboardSession,
   DashboardSessionCost,
   DashboardSessionDetail,
+  DashboardSpan,
   DashboardToolCall,
   DashboardTrace,
   DashboardTraceEvent,
+  DashboardTracePromptLink,
   DashboardTraceWithToolCalls,
+  DashboardWebhook,
   EvalDatasetSummary,
   EvalRunDetail,
   EvalRunStatus,
   EvalRunSummary,
   Json,
+  ScoreDataType,
+  ScoreSource,
 } from './types'
 
 export const EVAL_DATASET_BUCKET = 'eval-datasets'
@@ -63,6 +75,62 @@ interface CreateEvalRunInput {
   skippedGrades: number
   result: Json | null
   error: Json | null
+}
+
+interface CreatePromptInput {
+  projectId: BackendProjectId
+  name: string
+  slug: string
+  description: string | null
+  createdBy: string | null
+}
+
+interface CreatePromptVersionInput {
+  projectId: BackendProjectId
+  promptId: string
+  content: string
+  model: string | null
+  temperature: number | null
+  maxTokens: number | null
+  variables: Json
+  parentVersionId: string | null
+  changeNote: string | null
+  createdBy: string | null
+}
+
+interface SetPromptLabelInput {
+  projectId: BackendProjectId
+  promptId: string
+  label: string
+  versionId: string
+  changeNote: string | null
+  deployedBy: string | null
+}
+
+interface ResolvePromptInput {
+  projectId: BackendProjectId
+  slug: string
+  label: string
+  version: number | null
+}
+
+interface ListTracePromptLinksInput {
+  projectId: BackendProjectId
+  traceId: string
+}
+
+export interface CreateDashboardScoreInput {
+  id: string
+  projectId: BackendProjectId
+  traceId: string
+  spanId: string | null
+  name: string
+  value: number
+  dataType: ScoreDataType
+  stringValue: string | null
+  source: ScoreSource
+  comment: string | null
+  createdBy: string | null
 }
 
 function getDemoBackendProjectId(): BackendProjectId {
@@ -156,6 +224,17 @@ export async function listTraceToolCalls(projectId: BackendProjectId, traceId: s
     p_trace_id: traceId,
   })
 
+  if (error) throw error
+  return data
+}
+
+export async function listTraceSpans(projectId: BackendProjectId, traceId: string): Promise<DashboardSpan[]> {
+  const { data, error } = await createAdminClient().rpc('dashboard_list_trace_spans', {
+    p_project_id: projectId,
+    p_trace_id: traceId,
+  })
+
+  if (error?.code === 'PGRST202') return []
   if (error) throw error
   return data
 }
@@ -327,6 +406,303 @@ export async function getDashboardEvalRun(
 
   if (error) throw error
   return data ? toEvalRunDetail(data) : null
+}
+
+export async function listDashboardPrompts(projectId: BackendProjectId): Promise<DashboardPrompt[]> {
+  const { data, error } = await createAdminClient().rpc('dashboard_list_prompts', {
+    p_project_id: projectId,
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function getDashboardPrompt(
+  projectId: BackendProjectId,
+  promptId: string
+): Promise<DashboardPromptDetail | null> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_get_prompt', {
+      p_project_id: projectId,
+      p_prompt_id: promptId,
+    })
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
+export async function createDashboardPrompt(input: CreatePromptInput): Promise<DashboardPrompt> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_create_prompt', {
+      p_project_id: input.projectId,
+      p_name: input.name,
+      p_slug: input.slug,
+      p_description: input.description,
+      p_created_by: input.createdBy,
+    })
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function createDashboardPromptVersion(
+  input: CreatePromptVersionInput
+): Promise<DashboardPromptVersion> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_create_prompt_version', {
+      p_project_id: input.projectId,
+      p_prompt_id: input.promptId,
+      p_content: input.content,
+      p_model: input.model,
+      p_temperature: input.temperature,
+      p_max_tokens: input.maxTokens,
+      p_variables: input.variables,
+      p_parent_version_id: input.parentVersionId,
+      p_change_note: input.changeNote,
+      p_created_by: input.createdBy,
+    })
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function setDashboardPromptLabel(input: SetPromptLabelInput): Promise<DashboardPrompt> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_set_prompt_label', {
+      p_project_id: input.projectId,
+      p_prompt_id: input.promptId,
+      p_label: input.label,
+      p_version_id: input.versionId,
+      p_change_note: input.changeNote,
+      p_deployed_by: input.deployedBy,
+    })
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function resolveDashboardPrompt(input: ResolvePromptInput): Promise<DashboardResolvedPrompt | null> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_resolve_prompt', {
+      p_project_id: input.projectId,
+      p_slug: input.slug,
+      p_label: input.label,
+      p_version: input.version,
+    })
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
+export async function listTracePromptLinks(
+  input: ListTracePromptLinksInput
+): Promise<DashboardTracePromptLink[]> {
+  const { data, error } = await createAdminClient().rpc('dashboard_list_trace_prompt_links', {
+    p_project_id: input.projectId,
+    p_trace_id: input.traceId,
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function listDashboardScores(
+  projectId: BackendProjectId,
+  traceId: string
+): Promise<DashboardScore[]> {
+  const { data, error } = await createAdminClient().rpc('dashboard_list_scores', {
+    p_project_id: projectId,
+    p_trace_id: traceId,
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function createDashboardScore(
+  input: CreateDashboardScoreInput
+): Promise<DashboardScore> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_create_score', {
+      p_id: input.id,
+      p_project_id: input.projectId,
+      p_trace_id: input.traceId,
+      p_span_id: input.spanId,
+      p_name: input.name,
+      p_value: input.value,
+      p_data_type: input.dataType,
+      p_string_value: input.stringValue,
+      p_source: input.source,
+      p_comment: input.comment,
+      p_created_by: input.createdBy,
+    })
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function listDashboardAlertRules(projectId: BackendProjectId): Promise<DashboardAlertRule[]> {
+  const { data, error } = await createAdminClient().rpc('dashboard_list_alert_rules', {
+    p_project_id: projectId,
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function upsertDashboardAlertRule(input: {
+  id: string
+  projectId: BackendProjectId
+  kind: 'error_rate' | 'latency_p95' | 'token_budget'
+  threshold: number | null
+  enabled: boolean
+}): Promise<DashboardAlertRule> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_upsert_alert_rule', {
+      p_id: input.id,
+      p_project_id: input.projectId,
+      p_kind: input.kind,
+      p_threshold: input.threshold,
+      p_enabled: input.enabled,
+    })
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function deleteDashboardAlertRule(projectId: BackendProjectId, ruleId: string): Promise<void> {
+  const { error } = await createAdminClient().rpc('dashboard_delete_alert_rule', {
+    p_project_id: projectId,
+    p_id: ruleId,
+  })
+
+  if (error) throw error
+}
+
+export async function listDashboardWebhooks(projectId: BackendProjectId): Promise<DashboardWebhook[]> {
+  const { data, error } = await createAdminClient().rpc('dashboard_list_webhooks', {
+    p_project_id: projectId,
+  })
+
+  if (error) throw error
+  return data
+}
+
+export async function createDashboardWebhook(input: {
+  id: string
+  projectId: BackendProjectId
+  url: string
+}): Promise<DashboardWebhook> {
+  const { data, error } = await createAdminClient()
+    .rpc('dashboard_create_webhook', {
+      p_id: input.id,
+      p_project_id: input.projectId,
+      p_url: input.url,
+    })
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function deleteDashboardWebhook(projectId: BackendProjectId, webhookId: string): Promise<void> {
+  const { error } = await createAdminClient().rpc('dashboard_delete_webhook', {
+    p_project_id: projectId,
+    p_id: webhookId,
+  })
+
+  if (error) throw error
+}
+
+export async function exportDashboardTraceAsCsv(
+  projectId: BackendProjectId,
+  traceId: string
+): Promise<string> {
+  const [trace, spans, toolCalls, events] = await Promise.all([
+    getDashboardTrace(projectId, traceId),
+    listTraceSpans(projectId, traceId),
+    listTraceToolCalls(projectId, traceId),
+    listTraceEvents(projectId, traceId),
+  ])
+  if (!trace) throw new Error('Trace not found')
+
+  return [
+    '# trace',
+    toCsv([traceToRow(trace)]),
+    '',
+    '# spans',
+    toCsv(spans.map(spanToRow)),
+    '',
+    '# tool_calls',
+    toCsv(toolCalls.map(toolCallToRow)),
+    '',
+    '# events',
+    toCsv(events.map(eventToRow)),
+  ].join('\n')
+}
+
+function traceToRow(trace: DashboardTrace): Record<string, unknown> {
+  return {
+    id: trace.id,
+    session_id: trace.session_id,
+    run_id: trace.run_id,
+    created_at: trace.created_at,
+    ended_at: trace.ended_at,
+    name: trace.name,
+    status: trace.status,
+    error: trace.error,
+    cost_usd: trace.cost_usd,
+    input_tokens: trace.input_tokens,
+    output_tokens: trace.output_tokens,
+    model: trace.model,
+  }
+}
+
+function spanToRow(span: DashboardSpan): Record<string, unknown> {
+  return {
+    id: span.id,
+    trace_id: span.trace_id,
+    parent_span_id: span.parent_span_id,
+    kind: span.kind,
+    name: span.name,
+    started_at: span.started_at,
+    ended_at: span.ended_at,
+    status: span.status,
+    error: span.error,
+    iteration: span.iteration,
+    attributes: span.attributes,
+  }
+}
+
+function toolCallToRow(toolCall: DashboardToolCall): Record<string, unknown> {
+  return {
+    id: toolCall.id,
+    trace_id: toolCall.trace_id,
+    name: toolCall.name,
+    params: toolCall.params,
+    output: toolCall.output,
+    error: toolCall.error,
+    created_at: toolCall.created_at,
+  }
+}
+
+function eventToRow(event: DashboardTraceEvent): Record<string, unknown> {
+  return {
+    id: event.id,
+    trace_id: event.trace_id,
+    span_id: event.span_id,
+    type: event.type,
+    content: event.content,
+    attributes: event.attributes,
+    created_at: event.created_at,
+  }
 }
 
 export function attachToolCalls(

@@ -150,7 +150,7 @@ function computeStats(sessions: DashboardSession[]): ComputedStats {
     .map((s) => new Date(s.ended_at as string).getTime() - new Date(s.created_at).getTime())
     .filter((ms) => ms > 0)
 
-  const errored = 0
+  const errored = sessions.reduce((acc, s) => acc + s.errored_count, 0)
   const errorRatePct = total > 0 ? Math.round((errored / total) * 100) : 0
 
   const totalCost = sessions.reduce((acc, s) => acc + toNumber(s.total_cost_usd), 0)

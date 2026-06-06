@@ -1,7 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, ArrowLeft, Code, Database, FileJson, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircle, ArrowLeft, Code, Database, FileJson, Info, Loader2, X } from 'lucide-react'
 import Link from 'next/link'
 import { DatasetRowDrawer } from '@/components/dataset/dataset-row-drawer'
 import { DatasetTable } from '@/components/dataset/dataset-table'
@@ -36,6 +36,8 @@ export default function DatasetDetailPage({ params }: { params: { datasetId: str
   const [rawContent, setRawContent] = useState<string | null>(null)
   const [isLoadingRaw, setIsLoadingRaw] = useState(false)
   const [selectedRowIndex, setSelectedRowIndex] = useState<number | null>(null)
+  const [showInfo, setShowInfo] = useState(false)
+  const infoButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let isCurrent = true
@@ -214,7 +216,7 @@ export default function DatasetDetailPage({ params }: { params: { datasetId: str
   }
 
   return (
-    <div className="ns-enter flex min-h-[740px] flex-col overflow-hidden rounded-lg border bg-background">
+    <div className="ns-enter relative flex min-h-[740px] flex-col overflow-hidden rounded-lg border bg-background">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
         <div className="min-w-0 flex-1">
           <Link
@@ -233,11 +235,21 @@ export default function DatasetDetailPage({ params }: { params: { datasetId: str
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-right sm:grid-cols-4">
+        <div className="flex items-center gap-3">
+          <div className="grid grid-cols-2 gap-3 text-right sm:grid-cols-4">
           <MetaItem label="Format" value={dataset?.fileFormat ?? '-'} />
           <MetaItem label="Rows" value={dataset?.caseCount === null || dataset?.caseCount === undefined ? String(rows.length) : String(dataset.caseCount)} />
           <MetaItem label="Size" value={dataset ? formatBytes(dataset.byteSize) : '-'} />
           <MetaItem label="Runs" value={String(runs.length)} />
+          </div>
+          <button
+            ref={infoButtonRef}
+            onClick={() => setShowInfo((v) => !v)}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground hover:text-foreground transition-colors"
+            aria-label="Dataset info"
+          >
+            <Info className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -282,7 +294,7 @@ export default function DatasetDetailPage({ params }: { params: { datasetId: str
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden">
         <main className="min-h-0 overflow-auto">
           {isLoading ? (
             <div className="flex min-h-[420px] items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -303,51 +315,66 @@ export default function DatasetDetailPage({ params }: { params: { datasetId: str
             />
           )}
         </main>
+      </div>
 
-        <aside className="hidden min-h-0 overflow-y-auto border-l border-border bg-secondary/30 p-4 xl:block">
-          <div className="space-y-4">
-            <div className="rounded-lg border bg-white p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+      {showInfo && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowInfo(false)}
+          />
+          <div className="absolute right-4 top-[72px] z-50 w-72 rounded-lg border bg-white p-4 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                 <Database className="h-4 w-4 text-[#1D9E75]" />
-                Dataset
+                Dataset Info
               </div>
+              <button
+                onClick={() => setShowInfo(false)}
+                className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
               <div className="space-y-3">
                 <MetaItem label="Created" value={dataset ? formatDate(dataset.createdAt) : '-'} />
                 <MetaItem label="Columns" value={String(columns.length)} />
                 <MetaItem label="Changed" value={String(dirtyRows.size)} />
               </div>
-            </div>
 
-            <div className="rounded-lg border bg-white p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
-                <Code className="h-4 w-4 text-[#1D9E75]" />
-                Runs
-              </div>
-              {runs.length > 0 ? (
-                <div className="space-y-2">
-                  {runs.slice(0, 6).map((run) => (
-                    <Link
-                      key={run.id}
-                      href={`/projects/${project.id}/evals/${params.datasetId}`}
-                      className="block rounded-md border border-border bg-secondary/50 px-3 py-2 transition-colors hover:bg-secondary"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="font-mono text-xs text-foreground">{run.status}</span>
-                        <span className="font-mono text-[10px] text-muted-foreground">{formatDate(run.createdAt)}</span>
-                      </div>
-                      <div className="mt-1 font-mono text-[10px] text-muted-foreground">
-                        {run.passedCases}/{run.evaluatedCases} passed
-                      </div>
-                    </Link>
-                  ))}
+              <div className="border-t pt-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Code className="h-4 w-4 text-[#1D9E75]" />
+                  Runs
                 </div>
-              ) : (
-                <div className="py-4 text-center text-xs text-muted-foreground">No eval runs yet</div>
-              )}
+                {runs.length > 0 ? (
+                  <div className="space-y-2">
+                    {runs.slice(0, 6).map((run) => (
+                      <Link
+                        key={run.id}
+                        href={`/projects/${project.id}/evals/${params.datasetId}`}
+                        className="block rounded-md border border-border bg-secondary/50 px-3 py-2 transition-colors hover:bg-secondary"
+                        onClick={() => setShowInfo(false)}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-mono text-xs text-foreground">{run.status}</span>
+                          <span className="font-mono text-[10px] text-muted-foreground">{formatDate(run.createdAt)}</span>
+                        </div>
+                        <div className="mt-1 font-mono text-[10px] text-muted-foreground">
+                          {run.passedCases}/{run.evaluatedCases} passed
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-4 text-center text-xs text-muted-foreground">No eval runs yet</div>
+                )}
+              </div>
             </div>
           </div>
-        </aside>
-      </div>
+        </>
+      )}
 
       <DatasetRowDrawer
         row={selectedRow}

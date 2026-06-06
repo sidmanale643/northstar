@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { 
-  ArrowUp, ArrowDown, Copy, X, ListTree, History, MessagesSquare, 
-  Database, Play, Flag, Tag, ChevronDown, ChevronRight, Braces, Sparkles, 
-  Wrench, Percent, Clock, DollarSign, Binary, CheckCircle2, Box, BarChart2
+import { useEffect, useRef, useState, useMemo } from 'react'
+import {
+  ArrowUp, ArrowDown, Copy, X, ListTree, History, MessagesSquare,
+  Database, Play, Flag, Tag, ChevronDown, ChevronRight, Braces, Sparkles,
+  Wrench, Percent, Clock, DollarSign, Binary, CheckCircle2, Box, BarChart2, Loader2, Check, AlertCircle, Download
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { DashboardToolCall, DashboardTrace, DashboardTraceEvent } from '@/lib/supabase/types'
+import { TraceDagGraph } from '@/components/trace-dag-graph'
+import { ScorePanel } from '@/components/scores/score-panel'
+import { PromptVersionBadge } from '@/components/prompts/prompt-version-badge'
+import { PromptVersionSidePanel } from '@/components/prompts/prompt-version-side-panel'
+import type { DashboardSpan, DashboardToolCall, DashboardTrace, DashboardTraceEvent, DashboardTracePromptLink, EvalDatasetSummary, Json } from '@/lib/supabase/types'
 import { format } from 'date-fns'
 
 type SpanType = 'agent' | 'llm' | 'tool' | 'eval'
@@ -135,7 +139,52 @@ function IOBlock({ label, value }: { label: string; value: unknown }) {
   )
 }
 
-function DetailPanel({ node }: { node: SpanNode }) {
+function extractErrorMessage(error: Json): string {
+  if (error == null) return 'Unknown error'
+  if (typeof error === 'string') return error.length > 0 ? error : 'Unknown error'
+  if (typeof error === 'object' && !Array.isArray(error)) {
+    const e = error as Record<string, unknown>
+    const candidate = e.message ?? e.error ?? e.detail
+    if (typeof candidate === 'string' && candidate.length > 0) return candidate
+    if (candidate != null) return JSON.stringify(candidate)
+    if (Object.keys(e).length === 0) return 'Unknown error'
+    return JSON.stringify(error)
+  }
+  return 'Unknown error'
+}
+
+function ErrorBanner({ error, compact = false }: { error: Json; compact?: boolean }) {
+  const message = extractErrorMessage(error)
+  if (message === 'Unknown error') return null
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      className={cn(
+        'flex items-start gap-2 rounded-md border border-[#f09595] bg-[#fcebeb] px-3 py-2 text-[12px] text-[#a32d2d]',
+        compact && 'py-1.5 text-[11px]'
+      )}
+    >
+      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      <div className="min-w-0">
+        <div className="font-semibold">Run failed</div>
+        <pre className="mt-0.5 max-h-32 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px]">
+          {message}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+function DetailPanel({ node, projectId, traceId, userInput, finalResponse, promptLinks, onPromptBadgeClick }: {
+  node: SpanNode
+  projectId: string
+  traceId: string
+  userInput: string
+  finalResponse: string
+  promptLinks: DashboardTracePromptLink[]
+  onPromptBadgeClick: (link: DashboardTracePromptLink) => void
+}) {
   const isTrace = node.type === 'agent'
   const isTool = node.type === 'tool'
   const isEvent = node.type === 'llm' || node.type === 'eval'
@@ -164,15 +213,47 @@ function DetailPanel({ node }: { node: SpanNode }) {
             </div>
           </div>
           <div className="flex items-center gap-1.5 bg-secondary/50 border p-1 rounded-md">
-            <button className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent hover:!bg-white">
-              <Database className="w-3 h-3" /> Dataset
-            </button>
+            {isTrace ? (
+              <AddToDatasetButton
+                projectId={projectId}
+                traceId={traceId}
+                userInput={userInput}
+                finalResponse={finalResponse}
+              />
+            ) : (
+              <button
+                type="button"
+                disabled
+                className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent opacity-40 cursor-not-allowed"
+                title="Select the trace root to add it to a dataset"
+              >
+                <Database className="w-3 h-3" /> Dataset
+              </button>
+            )}
             <button className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent hover:!bg-white">
               <Play className="w-3 h-3" /> Replay
             </button>
+            {isTrace && (
+              <button
+                type="button"
+                onClick={() => downloadCsv(projectId, traceId)}
+                className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent hover:!bg-white"
+                title="Download run as CSV"
+              >
+                <Download className="w-3 h-3" /> CSV
+              </button>
+            )}
           </div>
         </div>
-        
+
+        {/* Error banner for trace root or tool nodes */}
+        {isTrace && (node.data as DashboardTrace).error && (
+          <ErrorBanner error={(node.data as DashboardTrace).error!} />
+        )}
+        {isTool && (node.data as DashboardToolCall).error && (
+          <ErrorBanner error={(node.data as DashboardToolCall).error!} compact />
+        )}
+
         {/* Compact Metrics Strip */}
         <div className="flex items-center gap-3 text-[12px] text-muted-foreground font-medium bg-secondary/30 border border-border/50 rounded-md px-3 py-1.5 w-fit">
           <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> {node.duration}</div>
@@ -187,10 +268,20 @@ function DetailPanel({ node }: { node: SpanNode }) {
              </>
           )}
         </div>
+
+        {isTrace && promptLinks.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="ns-label text-muted-foreground/70">Prompt</span>
+            {promptLinks.map((link) => (
+              <PromptVersionBadge key={link.id} link={link} onClick={onPromptBadgeClick} />
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="p-5 flex-1 overflow-y-auto space-y-4">
         <div className="grid grid-cols-1 gap-4">
+          {isTrace && <ScorePanel projectId={projectId} traceId={traceId} />}
           {isTool && (
             <>
               <IOBlock label="Input Parameters" value={(node.data as DashboardToolCall).params} />
@@ -282,13 +373,13 @@ function TreeItem({
       {node.isOpen && hasChildren && (
         <div className="animate-in slide-in-from-top-1 fade-in duration-200">
           {node.children.map(child => (
-            <TreeItem 
-              key={child.id} 
-              node={child} 
-              selectedId={selectedId} 
-              onSelect={onSelect} 
+            <TreeItem
+              key={child.id}
+              node={child}
+              selectedId={selectedId}
+              onSelect={onSelect}
               onToggle={onToggle}
-              depth={depth + 1} 
+              depth={depth + 1}
             />
           ))}
         </div>
@@ -297,20 +388,302 @@ function TreeItem({
   )
 }
 
-export function TraceInspector({ 
-  trace, 
-  toolCalls, 
-  events 
-}: { 
+function extractTraceCaseContent(events: DashboardTraceEvent[]): {
+  userInput: string
+  finalResponse: string
+} {
+  const userEvent = events.find((event) => event.type === 'user_input')
+  const finalEvent = events.find((event) => event.type === 'final_response')
+  return {
+    userInput: userEvent ? stringifyEventContent(userEvent.content) : '',
+    finalResponse: finalEvent ? stringifyEventContent(finalEvent.content) : '',
+  }
+}
+
+async function downloadCsv(projectId: string, traceId: string) {
+  const response = await fetch(`/api/projects/${projectId}/traces/${traceId}/export`)
+  if (!response.ok) {
+    console.error('CSV export failed:', response.status)
+    return
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `trace_${traceId.slice(0, 8)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+function stringifyEventContent(content: DashboardTraceEvent['content']): string {
+  if (typeof content === 'string') return content
+  if (content === null || content === undefined) return ''
+  return JSON.stringify(content)
+}
+
+function AddToDatasetButton({
+  projectId,
+  traceId,
+  userInput,
+  finalResponse,
+}: {
+  projectId: string
+  traceId: string
+  userInput: string
+  finalResponse: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [datasets, setDatasets] = useState<EvalDatasetSummary[]>([])
+  const [isLoadingDatasets, setIsLoadingDatasets] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('')
+  const [caseId, setCaseId] = useState<string>(traceId)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setCaseId(traceId)
+    setSubmitError(null)
+    setSuccess(null)
+
+    let isCurrent = true
+    async function load() {
+      setIsLoadingDatasets(true)
+      setLoadError(null)
+      try {
+        const response = await fetch(`/api/projects/${projectId}/eval-datasets`, {
+          cache: 'no-store',
+        })
+        const body: unknown = await response.json().catch(() => null)
+        if (!response.ok) {
+          throw new Error(typeof body === 'object' && body && 'error' in body
+            ? String((body as { error: unknown }).error)
+            : 'Unable to load datasets')
+        }
+        if (!isCurrent) return
+        const list = isEvalDatasetsResponse(body) ? body.datasets : []
+        setDatasets(list)
+        if (list.length > 0 && !list.some((d) => d.id === selectedDatasetId)) {
+          setSelectedDatasetId(list[0].id)
+        }
+      } catch (error) {
+        if (isCurrent) {
+          setLoadError(error instanceof Error ? error.message : 'Unable to load datasets')
+        }
+      } finally {
+        if (isCurrent) setIsLoadingDatasets(false)
+      }
+    }
+    load()
+    return () => {
+      isCurrent = false
+    }
+  }, [open, projectId, traceId, selectedDatasetId])
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(event: MouseEvent) {
+      if (!containerRef.current) return
+      if (!containerRef.current.contains(event.target as Node)) {
+        setOpen(false)
+      }
+    }
+    function onEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    document.addEventListener('keydown', onEscape)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      document.removeEventListener('keydown', onEscape)
+    }
+  }, [open])
+
+  async function handleSubmit() {
+    if (!selectedDatasetId) {
+      setSubmitError('Pick a dataset to add this trace to.')
+      return
+    }
+    if (!caseId.trim()) {
+      setSubmitError('Case id is required.')
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+    setSuccess(null)
+
+    const casePayload: Record<string, unknown> = {
+      id: caseId.trim(),
+      source_trace_id: traceId,
+    }
+    if (userInput) casePayload.input = userInput
+    if (finalResponse) casePayload.expected = finalResponse
+
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/eval-datasets/${selectedDatasetId}/cases`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ case: casePayload }),
+        }
+      )
+      const body: unknown = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(typeof body === 'object' && body && 'error' in body
+          ? String((body as { error: unknown }).error)
+          : 'Unable to add trace to dataset')
+      }
+      const datasetName = datasets.find((d) => d.id === selectedDatasetId)?.name ?? 'dataset'
+      setSuccess(`Added to "${datasetName}".`)
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Unable to add trace to dataset')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="ns-button !border-transparent !shadow-none !h-7 !px-2.5 !text-[11px] !bg-transparent hover:!bg-white"
+      >
+        <Database className="w-3 h-3" /> Dataset
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1.5 w-80 rounded-md border border-border bg-background p-3 shadow-lg">
+          <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Add trace to dataset
+          </div>
+
+          <label className="mb-2 block">
+            <span className="mb-1 block text-[10.5px] font-medium text-muted-foreground">Dataset</span>
+            <select
+              className="ns-input h-8 w-full text-[12px]"
+              value={selectedDatasetId}
+              onChange={(event) => setSelectedDatasetId(event.currentTarget.value)}
+              disabled={isLoadingDatasets || isSubmitting}
+            >
+              {isLoadingDatasets ? (
+                <option value="">Loading…</option>
+              ) : datasets.length === 0 ? (
+                <option value="">No datasets yet</option>
+              ) : (
+                datasets.map((dataset) => (
+                  <option key={dataset.id} value={dataset.id}>
+                    {dataset.name} ({dataset.caseCount ?? 0} cases)
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="mb-2 block">
+            <span className="mb-1 block text-[10.5px] font-medium text-muted-foreground">Case id</span>
+            <input
+              className="ns-input h-8 w-full font-mono text-[12px]"
+              value={caseId}
+              onChange={(event) => setCaseId(event.currentTarget.value)}
+              disabled={isSubmitting}
+              spellCheck={false}
+            />
+          </label>
+
+          <div className="mb-3 rounded-md border border-border/60 bg-secondary/30 p-2 text-[11px] text-muted-foreground">
+            <div className="mb-0.5 font-medium text-foreground/80">Case preview</div>
+            <div>input{userInput ? `: ${truncate(userInput, 60)}` : ': (no user_input event)'}</div>
+            <div>expected{finalResponse ? `: ${truncate(finalResponse, 60)}` : ': (no final_response event)'}</div>
+            <div>source_trace_id: {truncate(traceId, 32)}</div>
+          </div>
+
+          {loadError && (
+            <div className="mb-2 text-[11px] text-destructive">{loadError}</div>
+          )}
+          {submitError && (
+            <div className="mb-2 text-[11px] text-destructive">{submitError}</div>
+          )}
+          {success && (
+            <div className="mb-2 flex items-center gap-1.5 text-[11px] text-emerald-600">
+              <Check className="h-3 w-3" /> {success}
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="h-7 rounded-md px-2.5 text-[11px] font-medium text-muted-foreground hover:bg-secondary hover:text-foreground"
+              disabled={isSubmitting}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isSubmitting || isLoadingDatasets || datasets.length === 0}
+              className="ns-button !h-7 !px-3 !text-[11px] disabled:opacity-60"
+            >
+              {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              {isSubmitting ? 'Adding…' : 'Add to dataset'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function truncate(value: string, max: number): string {
+  if (value.length <= max) return value
+  return `${value.slice(0, max - 1)}…`
+}
+
+function isEvalDatasetsResponse(value: unknown): value is { datasets: EvalDatasetSummary[] } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'datasets' in value &&
+    Array.isArray((value as { datasets: unknown }).datasets)
+  )
+}
+
+export function TraceInspector({
+  trace,
+  spans,
+  toolCalls,
+  events,
+  projectId,
+  promptLinks,
+  promptVersionContent,
+  promptVersionMeta,
+  promptIdByLink,
+}: {
   trace: DashboardTrace
+  spans: DashboardSpan[]
   toolCalls: DashboardToolCall[]
   events: DashboardTraceEvent[]
+  projectId: string
+  promptLinks: DashboardTracePromptLink[]
+  promptVersionContent: Record<string, string>
+  promptVersionMeta: Record<string, { model: string | null; temperature: number | null; maxTokens: number | null }>
+  promptIdByLink: Record<string, string>
 }) {
   const [selectedId, setSelectedId] = useState(trace.id)
   const [activeTab, setActiveTab] = useState<'trace' | 'timeline' | 'thread'>('trace')
-  
+  const [sidePanelLink, setSidePanelLink] = useState<DashboardTracePromptLink | null>(null)
+
+  const uniquePromptLinks = useMemo(() => dedupeLinksByVersion(promptLinks), [promptLinks])
+
   const tree = useMemo(() => buildTree(trace, toolCalls, events), [trace, toolCalls, events])
-  
+
   const [openNodes, setOpenNodes] = useState<Set<string>>(() => {
     // initialize with root open
     return new Set([tree.id])
@@ -344,10 +717,12 @@ export function TraceInspector({
     })
   }
 
+  const { userInput, finalResponse } = useMemo(() => extractTraceCaseContent(events), [events])
+
   return (
-    <div className="flex flex-col flex-1 min-h-0 border border-border/80 rounded-2xl overflow-hidden bg-background shadow-sm ring-1 ring-border/50">
+    <div className="flex flex-col flex-1 min-h-0 border-t border-border/80 bg-background">
       {/* Top Toolbar */}
-      <div className="flex items-center gap-3 px-4 h-12 border-b border-border/80 bg-card/40 backdrop-blur-xl">
+      <div className="flex items-center gap-3 px-6 h-12 border-b border-border/80 bg-muted/10">
         <div className="flex items-center gap-1 text-muted-foreground">
           <button className="w-7 h-7 rounded-md hover:bg-muted flex items-center justify-center transition-colors" aria-label="up">
             <ArrowUp className="w-4 h-4" />
@@ -410,7 +785,24 @@ export function TraceInspector({
 
         <div className="bg-background relative min-w-0 min-h-0 flex flex-col">
           {activeTab === 'trace' && selectedNode ? (
-            <DetailPanel node={selectedNode} />
+            <DetailPanel
+              node={selectedNode}
+              projectId={projectId}
+              traceId={trace.id}
+              userInput={userInput}
+              finalResponse={finalResponse}
+              promptLinks={uniquePromptLinks}
+              onPromptBadgeClick={setSidePanelLink}
+            />
+          ) : activeTab === 'timeline' ? (
+            <TraceDagGraph
+              trace={trace}
+              spans={spans}
+              toolCalls={toolCalls}
+              events={events}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground animate-in fade-in">
               <Sparkles className="w-8 h-8 mb-3 opacity-20" />
@@ -419,6 +811,37 @@ export function TraceInspector({
           )}
         </div>
       </div>
+      {sidePanelLink ? (
+        <PromptVersionSidePanel
+          open
+          onOpenChange={(open) => {
+            if (!open) setSidePanelLink(null)
+          }}
+          link={sidePanelLink}
+          promptId={promptIdByLink[sidePanelLink.prompt_id] ?? sidePanelLink.prompt_id}
+          projectId={projectId}
+          versionContent={promptVersionContent[sidePanelLink.prompt_version_id] ?? ''}
+          model={promptVersionMeta[sidePanelLink.prompt_version_id]?.model ?? null}
+          temperature={promptVersionMeta[sidePanelLink.prompt_version_id]?.temperature ?? null}
+          maxTokens={promptVersionMeta[sidePanelLink.prompt_version_id]?.maxTokens ?? null}
+          onDiffWithProdClick={handleDiffNoop}
+        />
+      ) : null}
     </div>
   )
+}
+
+function handleDiffNoop(_versionId: string) {
+  // Phase 3 wires the DiffWithProdButton here.
+}
+
+function dedupeLinksByVersion(links: DashboardTracePromptLink[]): DashboardTracePromptLink[] {
+  const seen = new Set<string>()
+  const out: DashboardTracePromptLink[] = []
+  for (const link of links) {
+    if (seen.has(link.prompt_version_id)) continue
+    seen.add(link.prompt_version_id)
+    out.push(link)
+  }
+  return out
 }

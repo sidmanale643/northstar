@@ -8,6 +8,8 @@ import {
   Code2,
   FileCode2,
   Gauge,
+  GitBranch,
+  HeartHandshake,
   Loader2,
   Plus,
   Regex,
@@ -17,8 +19,24 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import type { EvalGraderDraft, EvalGraderKind, LiteLlmModelSearchResult } from '@/lib/eval-types'
-import { DEFAULT_RUBRIC_JUDGE_MODEL, deterministicGraders } from '@/lib/eval-types'
+import type {
+  EvalGraderDraft,
+  EvalGraderKind,
+  LiteLlmModelSearchResult,
+  PredefinedLlmGrader,
+  PredefinedLlmGraderId,
+  TraceGraderCheck,
+} from '@/lib/eval-types'
+import {
+  DEFAULT_RUBRIC_JUDGE_MODEL,
+  deterministicGraders,
+  predefinedLlmGraders,
+  traceGraderChecks,
+} from '@/lib/eval-types'
+import {
+  createPresetGrader,
+  nextGraderName,
+} from '@/lib/eval-grader-config'
 
 interface EvalConfigureTabProps {
   graders: EvalGraderDraft[]
@@ -40,6 +58,7 @@ interface GraderDraftUpdate {
   pattern?: string
   target?: string
   flags?: string[]
+  check?: TraceGraderCheck
 }
 
 const graderTypeMeta: Record<EvalGraderKind, {
@@ -52,6 +71,7 @@ const graderTypeMeta: Record<EvalGraderKind, {
   python: { label: 'Python grader', icon: FileCode2, color: 'text-[#0C447C]', bg: 'bg-[#E6F1FB]' },
   typescript: { label: 'TypeScript grader', icon: Code2, color: 'text-[#0C447C]', bg: 'bg-[#E6F1FB]' },
   regex: { label: 'Regex grader', icon: Regex, color: 'text-[#27500A]', bg: 'bg-[#EAF3DE]' },
+  trace: { label: 'Trace-aware grader', icon: GitBranch, color: 'text-[#0C447C]', bg: 'bg-[#E6F1FB]' },
 }
 
 const graderTypeDescriptions: Record<EvalGraderKind, string> = {
@@ -59,6 +79,7 @@ const graderTypeDescriptions: Record<EvalGraderKind, string> = {
   python: 'Run a Python validate function',
   typescript: 'Run a TypeScript validate function',
   regex: 'Match a pattern against the output',
+  trace: 'Grade trace DAG evidence',
 }
 
 const deterministicDescriptions: Record<string, string> = {
@@ -71,6 +92,13 @@ const deterministicIconMap: Record<string, React.ComponentType<{ className?: str
   ShieldCheck,
   ClipboardList,
   Gauge,
+}
+
+const presetIconMap: Record<PredefinedLlmGraderId, React.ComponentType<{ className?: string }>> = {
+  correctness: CheckCircle2,
+  faithfulness: ShieldCheck,
+  helpfulness: HeartHandshake,
+  safety_refusal_quality: Sparkles,
 }
 
 export function EvalConfigureTab({
@@ -93,6 +121,18 @@ export function EvalConfigureTab({
   function addGrader(type: EvalGraderKind) {
     setGraders((current) => {
       const grader = createDefaultGrader(current, type)
+      setActiveGraderId(grader.id)
+      return [...current, grader]
+    })
+  }
+
+  function addPresetGrader(preset: PredefinedLlmGrader) {
+    setGraders((current) => {
+      const grader = createPresetGrader({
+        current,
+        preset,
+        id: crypto.randomUUID(),
+      })
       setActiveGraderId(grader.id)
       return [...current, grader]
     })
@@ -124,7 +164,7 @@ export function EvalConfigureTab({
 
         <div className="space-y-3 p-4">
           {graders.length === 0 ? (
-            <EmptyState onAdd={addGrader} disabled={isRunning} />
+            <EmptyState onAdd={addGrader} onAddPreset={addPresetGrader} disabled={isRunning} />
           ) : (
             graders.map((grader) => (
               <GraderCard
@@ -140,7 +180,7 @@ export function EvalConfigureTab({
           )}
 
           {graders.length > 0 && (
-            <AddGraderButton onAdd={addGrader} disabled={isRunning} />
+            <AddGraderButton onAdd={addGrader} onAddPreset={addPresetGrader} disabled={isRunning} />
           )}
         </div>
       </div>
@@ -238,6 +278,13 @@ function GraderCard({
             updateActiveGrader={onUpdate}
           />
         )}
+        {grader.type === 'trace' && (
+          <TraceEditor
+            grader={grader}
+            isRunning={isRunning}
+            updateActiveGrader={onUpdate}
+          />
+        )}
       </div>
     </div>
   )
@@ -260,6 +307,13 @@ function getGraderSummary(grader: EvalGraderDraft): string {
   if (grader.type === 'python' || grader.type === 'typescript') {
     return `${grader.timeoutMs}ms timeout`
   }
+  if (grader.type === 'trace') {
+    const check = traceGraderChecks.find((item) => item.id === grader.check)
+    const segments = grader.model.split('/')
+    const modelName = segments[segments.length - 1] || grader.model
+    const model = check?.llm && grader.model ? ` · ${modelName}` : ''
+    return `${check?.label ?? grader.check}${model}`
+  }
   const flagLabels: string[] = []
   if (grader.flags.includes('ignorecase')) flagLabels.push('i')
   if (grader.flags.includes('multiline')) flagLabels.push('m')
@@ -270,9 +324,11 @@ function getGraderSummary(grader: EvalGraderDraft): string {
 
 function AddGraderButton({
   onAdd,
+  onAddPreset,
   disabled,
 }: {
   onAdd: (type: EvalGraderKind) => void
+  onAddPreset: (preset: PredefinedLlmGrader) => void
   disabled: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -289,7 +345,7 @@ function AddGraderButton({
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [open])
 
-  const order: EvalGraderKind[] = ['rubric', 'python', 'typescript', 'regex']
+  const order: EvalGraderKind[] = ['trace', 'rubric', 'python', 'typescript', 'regex']
 
   return (
     <div ref={containerRef} className="relative pt-1">
@@ -305,7 +361,36 @@ function AddGraderButton({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1.5 w-72 rounded-md border border-border bg-background p-1 shadow-md">
+        <div className="absolute left-0 top-full z-20 mt-1.5 w-80 rounded-md border border-border bg-background p-1 shadow-md">
+          <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Predefined LLM graders
+          </div>
+          {predefinedLlmGraders.map((preset) => {
+            const Icon = presetIconMap[preset.id]
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  onAddPreset(preset)
+                  setOpen(false)
+                }}
+                className="flex w-full items-start gap-2.5 rounded px-2 py-2 text-left transition-colors hover:bg-secondary"
+              >
+                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[#534AB7]/10 text-[#534AB7]">
+                  <Icon className="h-3.5 w-3.5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-medium text-foreground">{preset.label}</div>
+                  <div className="truncate text-[10.5px] text-muted-foreground">{preset.description}</div>
+                </div>
+              </button>
+            )
+          })}
+          <div className="my-1 border-t border-border" />
+          <div className="px-2 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
+            Custom graders
+          </div>
           {order.map((kind) => {
             const meta = graderTypeMeta[kind]
             const Icon = meta.icon
@@ -337,23 +422,56 @@ function AddGraderButton({
 
 function EmptyState({
   onAdd,
+  onAddPreset,
   disabled,
 }: {
   onAdd: (type: EvalGraderKind) => void
+  onAddPreset: (preset: PredefinedLlmGrader) => void
   disabled: boolean
 }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-secondary/30 px-6 py-10 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-md bg-background text-[#534AB7]">
-        <Sparkles className="h-5 w-5" />
-      </div>
-      <div>
-        <div className="text-sm font-medium text-foreground">No custom graders configured</div>
-        <div className="mt-1 max-w-[360px] text-xs leading-relaxed text-muted-foreground">
-          Deterministic graders will still run.
+    <div className="rounded-md border border-dashed border-border bg-secondary/30 p-5">
+      <div className="mb-4 flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-[#534AB7]">
+          <Sparkles className="h-5 w-5" />
+        </div>
+        <div>
+          <div className="text-sm font-medium text-foreground">Choose an LLM grader</div>
+          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            Start from a predefined rubric or add a custom grader. Deterministic graders run either way.
+          </div>
         </div>
       </div>
-      <AddGraderButton onAdd={onAdd} disabled={disabled} />
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        {predefinedLlmGraders.map((preset) => {
+          const Icon = presetIconMap[preset.id]
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => onAddPreset(preset)}
+              disabled={disabled}
+              className="flex items-start gap-3 rounded-md border border-border bg-background p-3 text-left transition-colors hover:border-[#534AB7]/50 hover:bg-[#534AB7]/5 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[#534AB7]/10 text-[#534AB7]">
+                <Icon className="h-4 w-4" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-medium text-foreground">{preset.label}</span>
+                <span className="mt-1 block text-[10.5px] leading-relaxed text-muted-foreground">
+                  {preset.description}
+                </span>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="mt-4 flex items-center gap-3">
+        <span className="text-[10.5px] text-muted-foreground">Need a different check?</span>
+        <AddGraderButton onAdd={onAdd} onAddPreset={onAddPreset} disabled={disabled} />
+      </div>
     </div>
   )
 }
@@ -410,8 +528,6 @@ function RubricEditor({
             <NumberField label="Pass" value={grader.passingScore} onChange={(value) => updateActiveGrader({ passingScore: value })} disabled={isRunning} />
           </div>
         )}
-
-        <NumberField label="Temperature" value={grader.temperature} onChange={(value) => updateActiveGrader({ temperature: value })} disabled={isRunning} />
       </div>
 
       <label className="block">
@@ -557,6 +673,66 @@ function RegexEditor({
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function TraceEditor({
+  grader,
+  isRunning,
+  updateActiveGrader,
+}: {
+  grader: Extract<EvalGraderDraft, { type: 'trace' }>
+  isRunning: boolean
+  updateActiveGrader: (update: GraderDraftUpdate) => void
+}) {
+  const selected = traceGraderChecks.find((check) => check.id === grader.check) ?? traceGraderChecks[0]
+  const isLlmJudge = selected.llm
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <label className="block">
+        <span className="mb-1 block text-[10.5px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+          Trace check
+        </span>
+        <select
+          className="ns-input h-9 w-full text-[12px]"
+          value={grader.check}
+          disabled={isRunning}
+          onChange={(event) => {
+            const selectedCheck = traceGraderChecks.find((item) => item.id === event.currentTarget.value)
+            if (!selectedCheck) return
+            updateActiveGrader({
+              check: selectedCheck.id,
+              model: selectedCheck.llm ? grader.model || DEFAULT_RUBRIC_JUDGE_MODEL : '',
+              temperature: selectedCheck.llm ? grader.temperature || '0' : '0',
+            })
+          }}
+        >
+          {traceGraderChecks.map((check) => (
+            <option key={check.id} value={check.id}>
+              {check.label}
+            </option>
+          ))}
+        </select>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+          {selected.description}
+        </p>
+      </label>
+
+      {isLlmJudge ? (
+        <div className="space-y-3">
+          <ModelCombobox
+            value={grader.model}
+            disabled={isRunning}
+            onChange={(model) => updateActiveGrader({ model })}
+          />
+        </div>
+      ) : (
+        <div className="rounded-md bg-secondary/50 p-3 text-xs leading-relaxed text-muted-foreground">
+          Deterministic trace checks use only captured span, event, retrieval, state, and cost fields.
+        </div>
+      )}
     </div>
   )
 }
@@ -1028,6 +1204,16 @@ function mergeGraderDraft(grader: EvalGraderDraft, update: GraderDraftUpdate): E
     }
   }
 
+  if (grader.type === 'trace') {
+    return {
+      ...grader,
+      name: update.name ?? grader.name,
+      check: update.check ?? grader.check,
+      model: update.model ?? grader.model,
+      temperature: update.temperature ?? grader.temperature,
+    }
+  }
+
   return {
     ...grader,
     name: update.name ?? grader.name,
@@ -1039,14 +1225,9 @@ function mergeGraderDraft(grader: EvalGraderDraft, update: GraderDraftUpdate): E
 
 function createDefaultGrader(current: EvalGraderDraft[], type: EvalGraderKind): EvalGraderDraft {
   const prefix = type === 'rubric' ? 'rubric_judge' : `${type}_grader`
-  const existingNames = new Set(current.map((grader) => grader.name.trim()))
-  let nextNumber = current.length + 1
-  while (existingNames.has(`${prefix}_${nextNumber}`)) {
-    nextNumber += 1
-  }
   const base = {
     id: crypto.randomUUID(),
-    name: `${prefix}_${nextNumber}`,
+    name: nextGraderName(current, prefix, current.length + 1),
   }
 
   if (type === 'python') {
@@ -1072,6 +1253,15 @@ function createDefaultGrader(current: EvalGraderDraft[], type: EvalGraderKind): 
       pattern: '',
       target: 'final_response',
       flags: ['ignorecase'],
+    }
+  }
+  if (type === 'trace') {
+    return {
+      ...base,
+      type,
+      check: 'bad_tool_failure_recovery',
+      model: '',
+      temperature: '0',
     }
   }
 

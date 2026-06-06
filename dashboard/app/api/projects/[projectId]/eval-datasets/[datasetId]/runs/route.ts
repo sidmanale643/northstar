@@ -12,6 +12,7 @@ import {
   SUPPORTED_DATASET_FORMATS,
   type EvalDatasetFileFormat,
 } from '@/lib/eval-datasets'
+import { parseEvalRunConfigBody } from '@/lib/eval-run-config'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   createDashboardEvalRun,
@@ -25,6 +26,7 @@ import {
 } from '@/lib/server/provider-key-store'
 import type { EvalRunStatus, Json } from '@/lib/supabase/types'
 import type { BackendProjectId } from '@/lib/projects'
+import type { EvalRunRequest } from '@/lib/eval-types'
 
 export const runtime = 'nodejs'
 
@@ -34,13 +36,36 @@ import sys
 from northstar.evals import (
     Dataset,
     EvalSuite,
+    BadToolFailureRecovery,
+    FailureOrigin,
+    HallucinatedToolResultJudge,
+    InvalidStateTransition,
     JudgeScoringConfig,
+    PlanningActionMismatchJudge,
     PythonCodeGrader,
     RegexGrader,
+    RetrievalPrecisionRecall,
     RubricJudge,
+    StaleContextUsage,
+    StepCostAttribution,
     TypeScriptCodeGrader,
+    UnnecessaryToolLoop,
     grader_plan,
 )
+
+TRACE_GRADERS = {
+    "bad_tool_failure_recovery": BadToolFailureRecovery,
+    "unnecessary_tool_loop": UnnecessaryToolLoop,
+    "stale_context_usage": StaleContextUsage,
+    "invalid_state_transition": InvalidStateTransition,
+    "retrieval_precision_recall": RetrievalPrecisionRecall,
+    "step_cost_attribution": StepCostAttribution,
+    "failure_origin": FailureOrigin,
+}
+TRACE_JUDGES = {
+    "hallucinated_tool_result_judge": HallucinatedToolResultJudge,
+    "planning_action_mismatch_judge": PlanningActionMismatchJudge,
+}
 
 dataset = Dataset.from_path(sys.argv[1])
 config = json.loads(sys.argv[2])
@@ -87,6 +112,22 @@ else:
                     flags=grader["flags"],
                 )
             )
+        elif grader_type == "trace":
+            check = grader["check"]
+            if check in TRACE_GRADERS:
+                trace_grader = TRACE_GRADERS[check]()
+                trace_grader.name = grader["name"]
+                graders.append(trace_grader)
+            elif check in TRACE_JUDGES:
+                graders.append(
+                    TRACE_JUDGES[check](
+                        name=grader["name"],
+                        model=grader.get("model") or "openrouter/deepseek/deepseek-v4-flash",
+                        temperature=grader.get("temperature", 0),
+                    )
+                )
+            else:
+                raise ValueError(f"Unsupported trace grader check: {check}")
         else:
             raise ValueError(f"Unsupported grader type: {grader_type}")
 
@@ -105,63 +146,7 @@ sys.stdout.write(result.model_dump_json())
 
 type EvalGradeStatus = 'passed' | 'failed' | 'skipped'
 type EvalCaseStatus = 'passed' | 'failed' | 'not_evaluated'
-type GraderRunConfig =
-  | BinaryJudgeRunConfig
-  | NumericJudgeRunConfig
-  | PythonCodeGraderRunConfig
-  | TypeScriptCodeGraderRunConfig
-  | RegexGraderRunConfig
-
-interface BinaryJudgeRunConfig {
-  type: 'rubric'
-  name: string
-  model: string
-  rubric: string
-  temperature: number
-  scoring: {
-    mode: 'binary'
-  }
-}
-
-interface NumericJudgeRunConfig {
-  type: 'rubric'
-  name: string
-  model: string
-  rubric: string
-  temperature: number
-  scoring: {
-    mode: 'numeric'
-    min_score: number
-    max_score: number
-    passing_score: number
-  }
-}
-
-interface PythonCodeGraderRunConfig {
-  type: 'python'
-  name: string
-  code: string
-  timeout_ms: number
-}
-
-interface TypeScriptCodeGraderRunConfig {
-  type: 'typescript'
-  name: string
-  code: string
-  timeout_ms: number
-}
-
-interface RegexGraderRunConfig {
-  type: 'regex'
-  name: string
-  pattern: string
-  target: string
-  flags: string[]
-}
-
-interface EvalRunConfig {
-  graders: GraderRunConfig[]
-}
+type EvalRunConfig = EvalRunRequest
 
 interface EvalGradePayload {
   name: string
@@ -314,149 +299,7 @@ async function readRunConfig(
     return { ok: false, error: 'Invalid eval run configuration JSON.' }
   }
 
-  if (!isRecord(body)) {
-    return { ok: false, error: 'Eval run configuration must be an object.' }
-  }
-
-  if ('graders' in body) {
-    const graders = parseGraderRunConfigs(body.graders)
-    if (!graders) {
-      return { ok: false, error: 'Invalid grader configuration.' }
-    }
-    return { ok: true, config: { graders } }
-  }
-
-  if ('judges' in body) {
-    const graders = parseGraderRunConfigs(body.judges)
-    if (!graders) {
-      return { ok: false, error: 'Invalid LLM judge configuration.' }
-    }
-    return { ok: true, config: { graders } }
-  }
-
-  if (!('judge' in body) || body.judge === null) {
-    return { ok: true, config: { graders: [] } }
-  }
-
-  const judge = parseGraderRunConfig(body.judge, 'rubric_judge')
-  if (!judge || judge.type !== 'rubric') {
-    return { ok: false, error: 'Invalid LLM judge configuration.' }
-  }
-
-  return { ok: true, config: { graders: [judge] } }
-}
-
-function parseGraderRunConfigs(value: unknown): GraderRunConfig[] | null {
-  if (!Array.isArray(value)) return null
-
-  const seenNames = new Set<string>()
-  const graders: GraderRunConfig[] = []
-  for (const entry of value) {
-    const grader = parseGraderRunConfig(entry)
-    if (!grader || seenNames.has(grader.name)) return null
-    seenNames.add(grader.name)
-    graders.push(grader)
-  }
-  return graders
-}
-
-function parseGraderRunConfig(value: unknown, fallbackName?: string): GraderRunConfig | null {
-  if (!isRecord(value)) return null
-  const name = typeof value.name === 'string' ? value.name.trim() : fallbackName
-  if (typeof name !== 'string' || !name) return null
-
-  const type = typeof value.type === 'string' ? value.type : 'rubric'
-  if (type === 'python' || type === 'typescript') {
-    if (
-      typeof value.code !== 'string' ||
-      !value.code.trim() ||
-      !isCodeGraderTimeout(value.timeout_ms)
-    ) {
-      return null
-    }
-    return {
-      type,
-      name,
-      code: value.code.trim(),
-      timeout_ms: value.timeout_ms,
-    }
-  }
-
-  if (type === 'regex') {
-    if (
-      typeof value.pattern !== 'string' ||
-      !value.pattern.trim() ||
-      typeof value.target !== 'string' ||
-      !value.target.trim() ||
-      !Array.isArray(value.flags) ||
-      !value.flags.every(isRegexFlag)
-    ) {
-      return null
-    }
-    return {
-      type,
-      name,
-      pattern: value.pattern.trim(),
-      target: value.target.trim(),
-      flags: value.flags,
-    }
-  }
-
-  if (type !== 'rubric') return null
-  if (
-    typeof value.model !== 'string' ||
-    !value.model.trim() ||
-    typeof value.rubric !== 'string' ||
-    !value.rubric.trim() ||
-    !isTemperature(value.temperature) ||
-    !isRecord(value.scoring) ||
-    typeof value.scoring.mode !== 'string'
-  ) {
-    return null
-  }
-
-  const model = value.model.trim()
-  const rubric = value.rubric.trim()
-  const temperature = value.temperature
-
-  if (value.scoring.mode === 'binary') {
-    return {
-      type: 'rubric',
-      name,
-      model,
-      rubric,
-      temperature,
-      scoring: {
-        mode: 'binary',
-      },
-    }
-  }
-
-  if (value.scoring.mode !== 'numeric') return null
-  if (
-    !isFiniteNumber(value.scoring.min_score) ||
-    !isFiniteNumber(value.scoring.max_score) ||
-    !isFiniteNumber(value.scoring.passing_score) ||
-    value.scoring.max_score <= value.scoring.min_score ||
-    value.scoring.passing_score < value.scoring.min_score ||
-    value.scoring.passing_score > value.scoring.max_score
-  ) {
-    return null
-  }
-
-  return {
-    type: 'rubric',
-    name,
-    model,
-    rubric,
-    temperature,
-    scoring: {
-      mode: 'numeric',
-      min_score: value.scoring.min_score,
-      max_score: value.scoring.max_score,
-      passing_score: value.scoring.passing_score,
-    },
-  }
+  return parseEvalRunConfigBody(body)
 }
 
 async function runSdkEval(
@@ -516,7 +359,7 @@ async function runUvPython(
   }
   const env = {
     ...baseEnv,
-    ...await providerKeyEnvForModels(projectId, rubricJudgeModels(config), baseEnv),
+    ...await providerKeyEnvForModels(projectId, graderModels(config), baseEnv),
   }
 
   return new Promise((resolveRun, rejectRun) => {
@@ -700,12 +543,13 @@ function readStringField(value: Record<string, unknown>, field: string): string 
   return typeof fieldValue === 'string' ? fieldValue : null
 }
 
-function rubricJudgeModels(config: EvalRunConfig): string[] {
+function graderModels(config: EvalRunConfig): string[] {
   return config.graders
-    .filter((grader): grader is BinaryJudgeRunConfig | NumericJudgeRunConfig =>
-      grader.type === 'rubric'
-    )
-    .map((grader) => grader.model)
+    .flatMap((grader) => {
+      if (grader.type === 'rubric') return [grader.model]
+      if (grader.type === 'trace' && grader.model) return [grader.model]
+      return []
+    })
 }
 
 function isEvalResultPayload(value: unknown): value is EvalResultPayload {
@@ -758,22 +602,6 @@ function isEvalGradePayload(value: unknown): value is EvalGradePayload {
 
 function optionalJsonNumber(value: unknown) {
   return value === undefined || value === null || (typeof value === 'number' && Number.isFinite(value))
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value)
-}
-
-function isTemperature(value: unknown): value is number {
-  return isFiniteNumber(value) && value >= 0 && value <= 2
-}
-
-function isCodeGraderTimeout(value: unknown): value is number {
-  return Number.isInteger(value) && typeof value === 'number' && value > 0 && value <= 5000
-}
-
-function isRegexFlag(value: unknown): value is string {
-  return value === 'ignorecase' || value === 'multiline' || value === 'dotall'
 }
 
 function isEvalCaseStatus(value: unknown): value is EvalCaseStatus {

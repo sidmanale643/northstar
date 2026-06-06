@@ -33,6 +33,7 @@ export interface Database {
           ended_at: string | null
           trace_count: number
           tool_call_count: number
+          errored_count: number
           total_cost_usd: string
           total_input_tokens: number
           total_output_tokens: number
@@ -79,6 +80,13 @@ export interface Database {
           p_trace_id: string
         }
         Returns: DashboardToolCall[]
+      }
+      dashboard_list_trace_spans: {
+        Args: {
+          p_project_id: string
+          p_trace_id: string
+        }
+        Returns: DashboardSpan[]
       }
       dashboard_list_trace_events: {
         Args: {
@@ -210,6 +218,132 @@ export interface Database {
         }
         Returns: DashboardEncryptedProviderKey[]
       }
+      dashboard_list_prompts: {
+        Args: {
+          p_project_id: string
+        }
+        Returns: DashboardPrompt[]
+      }
+      dashboard_get_prompt: {
+        Args: {
+          p_project_id: string
+          p_prompt_id: string
+        }
+        Returns: DashboardPromptDetail[]
+      }
+      dashboard_create_prompt: {
+        Args: {
+          p_project_id: string
+          p_name: string
+          p_slug: string
+          p_description: string | null
+          p_created_by: string | null
+        }
+        Returns: DashboardPrompt[]
+      }
+      dashboard_create_prompt_version: {
+        Args: {
+          p_project_id: string
+          p_prompt_id: string
+          p_content: string
+          p_model: string | null
+          p_temperature: number | null
+          p_max_tokens: number | null
+          p_variables: Json
+          p_parent_version_id: string | null
+          p_change_note: string | null
+          p_created_by: string | null
+        }
+        Returns: DashboardPromptVersion[]
+      }
+      dashboard_set_prompt_label: {
+        Args: {
+          p_project_id: string
+          p_prompt_id: string
+          p_label: string
+          p_version_id: string
+          p_change_note: string | null
+          p_deployed_by: string | null
+        }
+        Returns: DashboardPrompt[]
+      }
+      dashboard_resolve_prompt_label: {
+        Args: {
+          p_project_id: string
+          p_slug: string
+          p_label: string
+        }
+        Returns: DashboardResolvedPrompt[]
+      }
+      dashboard_resolve_prompt: {
+        Args: {
+          p_project_id: string
+          p_slug: string
+          p_label: string
+          p_version: number | null
+        }
+        Returns: DashboardResolvedPrompt[]
+      }
+      dashboard_list_trace_prompt_links: {
+        Args: {
+          p_project_id: string
+          p_trace_id: string
+        }
+        Returns: DashboardTracePromptLink[]
+      }
+      dashboard_list_scores: {
+        Args: {
+          p_project_id: string
+          p_trace_id: string
+        }
+        Returns: DashboardScore[]
+      }
+      dashboard_create_score: {
+        Args: {
+          p_id: string
+          p_project_id: string
+          p_trace_id: string
+          p_span_id: string | null
+          p_name: string
+          p_value: number
+          p_data_type: ScoreDataType
+          p_string_value: string | null
+          p_source: ScoreSource
+          p_comment: string | null
+          p_created_by: string | null
+        }
+        Returns: DashboardScore[]
+      }
+      dashboard_list_alert_rules: {
+        Args: { p_project_id: string }
+        Returns: DashboardAlertRule[]
+      }
+      dashboard_upsert_alert_rule: {
+        Args: {
+          p_id: string
+          p_project_id: string
+          p_kind: AlertRuleKind
+          p_threshold: number | null
+          p_enabled: boolean
+        }
+        Returns: DashboardAlertRule[]
+      }
+      dashboard_delete_alert_rule: {
+        Args: { p_project_id: string; p_id: string }
+        Returns: undefined
+      }
+      dashboard_list_webhooks: {
+        Args: { p_project_id: string }
+        Returns: DashboardWebhook[]
+      }
+      dashboard_create_webhook: {
+        Args: { p_id: string; p_project_id: string; p_url: string }
+        Returns: DashboardWebhook[]
+      }
+      dashboard_delete_webhook: {
+        Args: { p_project_id: string; p_id: string }
+        Returns: undefined
+      }
     }
   }
 }
@@ -237,6 +371,24 @@ export interface DashboardToolCall {
   output: Json
   error: Json | null
   created_at: string
+}
+
+export type DashboardSpanKind = 'agent' | 'workflow' | 'model' | 'tool' | 'custom'
+
+export type DashboardSpanStatus = 'running' | 'ok' | 'error'
+
+export interface DashboardSpan {
+  id: string
+  trace_id: string
+  parent_span_id: string | null
+  kind: DashboardSpanKind
+  name: string
+  started_at: string
+  ended_at: string | null
+  status: DashboardSpanStatus
+  error: Json | null
+  iteration: number | null
+  attributes: Json
 }
 
 export type DashboardTraceEventType =
@@ -333,6 +485,121 @@ export interface DashboardProviderKey {
 
 export interface DashboardEncryptedProviderKey {
   encrypted_api_key: string
+}
+
+export interface DashboardPrompt {
+  id: string
+  project_id: string
+  name: string
+  slug: string
+  description: string | null
+  current_version_id: string | null
+  labels: Json
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DashboardPromptVersion {
+  id: string
+  prompt_id: string
+  project_id: string
+  version_number: number
+  content: string
+  model: string | null
+  temperature: number | null
+  max_tokens: number | null
+  variables: Json
+  parent_version_id: string | null
+  change_note: string | null
+  content_hash: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface DashboardPromptLabelHistory {
+  id: number
+  project_id: string
+  prompt_id: string
+  label: string
+  version_id: string
+  deployed_at: string
+  deployed_by: string | null
+  change_note: string | null
+}
+
+export interface DashboardPromptDetail extends DashboardPrompt {
+  versions: DashboardPromptVersion[] | null
+  label_history: DashboardPromptLabelHistory[] | null
+}
+
+export interface DashboardResolvedPrompt {
+  prompt_id: string
+  prompt_version_id: string
+  version_number: number
+  content: string
+  model: string | null
+  temperature: number | null
+  max_tokens: number | null
+  variables: Json
+  content_hash: string
+}
+
+export interface DashboardTracePromptLink {
+  id: number
+  project_id: string
+  trace_id: string
+  span_id: string
+  prompt_id: string
+  prompt_name: string
+  prompt_slug: string
+  prompt_version_id: string
+  version_number: number
+  content_hash: string
+  labels: Json
+  variable_values: Json
+  linked_at: string
+}
+
+export type ScoreDataType = 'numeric' | 'categorical' | 'boolean'
+
+export type ScoreSource = 'human' | 'api' | 'auto'
+
+export interface DashboardScore {
+  id: string
+  project_id: string
+  trace_id: string
+  span_id: string | null
+  name: string
+  value: number
+  data_type: ScoreDataType
+  string_value: string | null
+  source: ScoreSource
+  comment: string | null
+  created_by: string | null
+  created_at: string
+}
+
+export type AlertRuleKind = 'error_rate' | 'latency_p95' | 'token_budget'
+
+export interface DashboardAlertRule {
+  id: string
+  project_id: string
+  kind: AlertRuleKind
+  threshold: number | null
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type WebhookStatus = 'active' | 'paused'
+
+export interface DashboardWebhook {
+  id: string
+  project_id: string
+  url: string
+  status: WebhookStatus
+  created_at: string
 }
 
 export interface EvalRunSummary {

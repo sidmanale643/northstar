@@ -35,7 +35,10 @@ export function parseBackendProjectId(value: string): BackendProjectId | null {
     : null
 }
 
-export function projectHref(projectId: ProjectId, section: 'traces' | 'sessions' | 'settings' | 'evals' | 'datasets' = 'traces') {
+export function projectHref(
+  projectId: ProjectId,
+  section: 'traces' | 'sessions' | 'settings' | 'evals' | 'datasets' | 'prompts' | 'playground' = 'traces'
+) {
   return `/projects/${projectId}/${section}`
 }
 
@@ -47,13 +50,35 @@ export function traceHref(projectId: ProjectId, traceId: string) {
   return `${projectHref(projectId, 'traces')}/${traceId}`
 }
 
+export function promptHref(projectId: ProjectId, promptId?: string) {
+  const base = projectHref(projectId, 'prompts')
+  return promptId ? `${base}/${promptId}` : base
+}
+
+export function playgroundHref(projectId: ProjectId, params?: { promptId?: string; versionId?: string }) {
+  const base = projectHref(projectId, 'playground')
+  if (!params) return base
+  const search = new URLSearchParams()
+  if (params.promptId) search.set('promptId', params.promptId)
+  if (params.versionId) search.set('versionId', params.versionId)
+  const query = search.toString()
+  return query ? `${base}?${query}` : base
+}
+
 export function projectSwitchHref(pathname: string, projectId: ProjectId) {
-  const match = pathname.match(/^\/projects\/[^/]+\/(traces|sessions|settings|evals|datasets)(\/.*)?$/)
+  const match = pathname.match(/^\/projects\/[^/]+\/(traces|sessions|settings|evals|datasets|prompts|playground)(\/.*)?$/)
   const section = match?.[1]
   const isDetailPage = Boolean(match?.[2])
 
   if (isDetailPage || !section) return projectHref(projectId)
-  if (section === 'sessions' || section === 'settings' || section === 'evals' || section === 'datasets') {
+  if (
+    section === 'sessions' ||
+    section === 'settings' ||
+    section === 'evals' ||
+    section === 'datasets' ||
+    section === 'prompts' ||
+    section === 'playground'
+  ) {
     return projectHref(projectId, section)
   }
   return projectHref(projectId)

@@ -1,14 +1,15 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
-import { Activity, AlertCircle, ArrowUpRight, Brain, Cpu } from 'lucide-react'
+import { Activity, AlertCircle, ArrowUpRight, Brain, Cpu, Search } from 'lucide-react'
 import { CostBadge } from '@/components/cost-badge'
 import type { DashboardTraceWithToolCalls } from '@/lib/supabase/types'
 import { traceHref, type ProjectId } from '@/lib/projects'
 import { cn } from '@/lib/utils'
+import { useDebouncedValue } from '@/lib/use-debounced-value'
 import {
   buildSortHref,
   parseTracesSort,
@@ -45,10 +46,37 @@ export function RecentTraceTimeline({
   const searchParams = useSearchParams()
   const sortSpec = parseTracesSort(searchParams)
 
-  const sorted = useMemo(() => sortTraces(traces, sortSpec), [traces, sortSpec])
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebouncedValue(query, 200)
+  const filtered = useMemo(() => {
+    const needle = debouncedQuery.trim().toLowerCase()
+    if (!needle) return traces
+    return traces.filter((t) => {
+      return (
+        (t.name ?? '').toLowerCase().includes(needle) ||
+        (t.model ?? '').toLowerCase().includes(needle) ||
+        t.id.toLowerCase().includes(needle) ||
+        t.session_id.toLowerCase().includes(needle)
+      )
+    })
+  }, [traces, debouncedQuery])
+  const sorted = useMemo(() => sortTraces(filtered, sortSpec), [filtered, sortSpec])
 
   return (
     <div>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Search className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search traces…"
+            className="h-7 w-[200px] rounded-md border bg-white px-2.5 font-mono text-[12px] outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-emerald-100"
+          />
+          <span className="font-mono text-[10px] text-muted-foreground">Client-side filter · server search coming</span>
+        </div>
+      </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[12px] text-muted-foreground">Sort:</span>
