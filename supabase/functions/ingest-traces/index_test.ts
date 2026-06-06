@@ -6,7 +6,9 @@ import {
   type IngestStore,
   sha256hex,
   validateEvents,
+  validatePromptLinks,
   validateRuns,
+  validateScores,
   validateSessions,
   validateSpans,
 } from "./index.ts";
@@ -80,6 +82,8 @@ const SESSION_ID = "22222222-2222-2222-2222-222222222222";
 const RUN_ID = "33333333-3333-3333-3333-333333333333";
 const SPAN_ID = "44444444-4444-4444-4444-444444444444";
 const EVENT_ID = "55555555-5555-5555-5555-555555555555";
+const PROMPT_VERSION_ID = "66666666-6666-6666-6666-666666666666";
+const SCORE_ID = "77777777-7777-7777-7777-777777777777";
 
 function createValidPayload(options: {
   includeProjectIds?: boolean;
@@ -151,12 +155,24 @@ function createAuthRequest(payload: unknown) {
 
 Deno.test("createPostgresIngestStore - binds ingest arrays as JSON", async () => {
   const jsonValues: unknown[] = [];
-  const sql = Object.assign(
-    () => Promise.resolve([]),
+  const queries: string[] = [];
+  const transaction = Object.assign(
+    (strings: TemplateStringsArray) => {
+      queries.push(strings.join("?"));
+      return Promise.resolve([]);
+    },
     {
       json: (value: unknown) => {
         jsonValues.push(value);
         return value;
+      },
+    },
+  );
+  const sql = Object.assign(
+    () => Promise.resolve([]),
+    {
+      begin: async (callback: (sql: typeof transaction) => Promise<void>) => {
+        await callback(transaction);
       },
     },
   );
@@ -169,6 +185,27 @@ Deno.test("createPostgresIngestStore - binds ingest arrays as JSON", async () =>
     runs: [],
     spans: [],
     events: [],
+    promptLinks: [
+      {
+        project_id: PROJECT_ID,
+        trace_id: RUN_ID,
+        span_id: SPAN_ID,
+        prompt_version_id: PROMPT_VERSION_ID,
+        variable_values: { topic: "northstar" },
+      },
+    ],
+    scores: [
+      {
+        id: SCORE_ID,
+        project_id: PROJECT_ID,
+        trace_id: RUN_ID,
+        name: "correctness",
+        value: 0.8,
+        data_type: "numeric",
+        source: "api",
+        created_at: "2024-01-01T00:00:00Z",
+      },
+    ],
   };
 
   await store.ingestBatch(batch);
@@ -178,7 +215,12 @@ Deno.test("createPostgresIngestStore - binds ingest arrays as JSON", async () =>
     batch.runs,
     batch.spans,
     batch.events,
+    batch.promptLinks,
+    batch.scores,
   ]);
+  assertEquals(queries.length, 2);
+  assertEquals(queries[0].includes("ingest_batch_with_prompt_links"), true);
+  assertEquals(queries[1].includes("dashboard_bulk_create_scores"), true);
 });
 
 // ---------------------------------------------------------------------------
@@ -436,6 +478,136 @@ Deno.test("validateEvents - accepts all valid types", () => {
   }
 });
 
+Deno.test("validatePromptLinks - accepts valid prompt link", () => {
+  const result = validatePromptLinks([
+    {
+      project_id: PROJECT_ID,
+      trace_id: RUN_ID,
+      span_id: SPAN_ID,
+      prompt_version_id: PROMPT_VERSION_ID,
+      variable_values: { topic: "northstar" },
+    },
+  ]);
+  assertEquals(result, null);
+});
+
+Deno.test("validatePromptLinks - rejects invalid prompt_version_id", () => {
+  const result = validatePromptLinks([
+    {
+      trace_id: RUN_ID,
+      span_id: SPAN_ID,
+      prompt_version_id: "not-a-uuid",
+      variable_values: {},
+    },
+  ]);
+  assertEquals(
+    result,
+    "prompt_links[0].prompt_version_id is not a valid UUID",
+  );
+});
+
+Deno.test("validatePromptLinks - rejects missing trace_id", () => {
+  const result = validatePromptLinks([
+    {
+      span_id: SPAN_ID,
+      prompt_version_id: PROMPT_VERSION_ID,
+      variable_values: {},
+    },
+  ]);
+  assertEquals(result, "prompt_links[0].trace_id is not a valid UUID");
+});
+
+Deno.test("validatePromptLinks - rejects non-object variable_values", () => {
+  const result = validatePromptLinks([
+    {
+      trace_id: RUN_ID,
+      span_id: SPAN_ID,
+      prompt_version_id: PROMPT_VERSION_ID,
+      variable_values: [],
+    },
+  ]);
+  assertEquals(result, "prompt_links[0].variable_values must be an object");
+});
+
+Deno.test("validateScores - accepts SDK score variants", () => {
+  const result = validateScores([
+    {
+      id: SCORE_ID,
+      trace_id: RUN_ID,
+      name: "correctness",
+      value: 0.8,
+      data_type: "numeric",
+      source: "api",
+      created_at: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "88888888-8888-8888-8888-888888888888",
+      trace_id: RUN_ID,
+      span_id: SPAN_ID,
+      name: "label",
+      value: 1,
+      data_type: "categorical",
+      string_value: "good",
+      source: "api",
+      comment: "reviewed",
+      created_at: "2024-01-01T00:00:00Z",
+    },
+    {
+      id: "99999999-9999-9999-9999-999999999999",
+      trace_id: RUN_ID,
+      name: "passed",
+      value: 1,
+      data_type: "boolean",
+      source: "api",
+      created_at: "2024-01-01T00:00:00Z",
+    },
+  ]);
+
+  assertEquals(result, null);
+});
+
+Deno.test("validateScores - rejects invalid categorical score", () => {
+  const result = validateScores([
+    {
+      id: SCORE_ID,
+      trace_id: RUN_ID,
+      name: "label",
+      value: 1,
+      data_type: "categorical",
+      source: "api",
+      created_at: "2024-01-01T00:00:00Z",
+    },
+  ]);
+
+  assertEquals(
+    result,
+    "scores[0].string_value is required for categorical scores",
+  );
+});
+
+Deno.test("validateScores - rejects non-finite numeric values", () => {
+  const result = validateScores([
+    {
+      id: SCORE_ID,
+      trace_id: RUN_ID,
+      name: "correctness",
+      value: Number.POSITIVE_INFINITY,
+      data_type: "numeric",
+      source: "api",
+      created_at: "2024-01-01T00:00:00Z",
+    },
+  ]);
+
+  assertEquals(result, "scores[0].value must be a finite number");
+});
+
+Deno.test("validateScores - rejects batches over the RPC limit", () => {
+  assertEquals(
+    validateScores(Array.from({ length: 501 })),
+    "scores must contain at most 500 items",
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Handler tests - CORS
 // ---------------------------------------------------------------------------
@@ -522,7 +694,7 @@ Deno.test("handleIngestRequest - rejects invalid JSON", async () => {
 });
 
 Deno.test("handleIngestRequest - rejects wrong schema_version", async () => {
-  const req = createAuthRequest({ schema_version: 2 });
+  const req = createAuthRequest({ schema_version: 3 });
   const supabase = createMockStore({
     resolveApiKeyResult: {
       data: [{ key_id: "x", project_id: PROJECT_ID }],
@@ -532,7 +704,7 @@ Deno.test("handleIngestRequest - rejects wrong schema_version", async () => {
   const res = await handleIngestRequest(req, supabase);
   assertEquals(res.status, 400);
   const body = await res.json();
-  assertEquals(body.error, "Unsupported schema_version (expected 1)");
+  assertEquals(body.error, "Unsupported schema_version (expected 1 or 2)");
 });
 
 Deno.test("handleIngestRequest - rejects non-object JSON bodies", async () => {
@@ -599,6 +771,50 @@ Deno.test("handleIngestRequest - accepts valid payload", async () => {
   assertEquals(body.accepted, true);
 });
 
+Deno.test("handleIngestRequest - accepts schema version 2 scores", async () => {
+  const req = createAuthRequest({
+    ...createValidPayload(),
+    schema_version: 2,
+    scores: [
+      {
+        id: SCORE_ID,
+        trace_id: RUN_ID,
+        span_id: SPAN_ID,
+        name: "correctness",
+        value: 0.8,
+        data_type: "numeric",
+        source: "api",
+        comment: "looks right",
+        created_at: "2024-01-01T00:00:00Z",
+      },
+    ],
+  });
+  const supabase = createMockStore({
+    resolveApiKeyResult: {
+      data: [{ key_id: "x", project_id: PROJECT_ID }],
+      error: null,
+    },
+  });
+
+  const res = await handleIngestRequest(req, supabase);
+
+  assertEquals(res.status, 200);
+  assertEquals(supabase.ingestCalls[0].scores, [
+    {
+      id: SCORE_ID,
+      project_id: PROJECT_ID,
+      trace_id: RUN_ID,
+      span_id: SPAN_ID,
+      name: "correctness",
+      value: 0.8,
+      data_type: "numeric",
+      source: "api",
+      comment: "looks right",
+      created_at: "2024-01-01T00:00:00Z",
+    },
+  ]);
+});
+
 Deno.test("handleIngestRequest - preserves nested cost tracking fields", async () => {
   const payload = createValidPayload();
   payload.runs[0].metadata = {
@@ -624,7 +840,10 @@ Deno.test("handleIngestRequest - preserves nested cost tracking fields", async (
   const res = await handleIngestRequest(req, supabase);
 
   assertEquals(res.status, 200);
-  assertEquals(supabase.ingestCalls[0].runs[0].metadata, payload.runs[0].metadata);
+  assertEquals(
+    supabase.ingestCalls[0].runs[0].metadata,
+    payload.runs[0].metadata,
+  );
   assertEquals(
     supabase.ingestCalls[0].spans[0].attributes,
     payload.spans[0].attributes,
@@ -652,6 +871,66 @@ Deno.test("handleIngestRequest - stamps authenticated project_id onto SDK payloa
   assertEquals(batch.runs[0].project_id, PROJECT_ID);
   assertEquals(batch.spans[0].project_id, PROJECT_ID);
   assertEquals(batch.events[0].project_id, PROJECT_ID);
+});
+
+Deno.test("handleIngestRequest - validates prompt_links array", async () => {
+  const req = createAuthRequest({
+    ...createValidPayload(),
+    prompt_links: [
+      {
+        trace_id: RUN_ID,
+        span_id: SPAN_ID,
+        prompt_version_id: PROMPT_VERSION_ID,
+        variable_values: "not-an-object",
+      },
+    ],
+  });
+  const supabase = createMockStore({
+    resolveApiKeyResult: {
+      data: [{ key_id: "x", project_id: PROJECT_ID }],
+      error: null,
+    },
+  });
+
+  const res = await handleIngestRequest(req, supabase);
+
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(body.error, "prompt_links[0].variable_values must be an object");
+});
+
+Deno.test("handleIngestRequest - stamps and passes prompt_links to store", async () => {
+  const req = createAuthRequest({
+    ...createValidPayload(),
+    prompt_links: [
+      {
+        span_id: SPAN_ID,
+        trace_id: RUN_ID,
+        prompt_version_id: PROMPT_VERSION_ID,
+        variable_values: { topic: "northstar" },
+      },
+    ],
+  });
+  const supabase = createMockStore({
+    resolveApiKeyResult: {
+      data: [{ key_id: "x", project_id: PROJECT_ID }],
+      error: null,
+    },
+    ingestBatchResult: { data: { accepted: true }, error: null },
+  });
+
+  const res = await handleIngestRequest(req, supabase);
+
+  assertEquals(res.status, 200);
+  assertEquals(supabase.ingestCalls[0].promptLinks, [
+    {
+      project_id: PROJECT_ID,
+      trace_id: RUN_ID,
+      span_id: SPAN_ID,
+      prompt_version_id: PROMPT_VERSION_ID,
+      variable_values: { topic: "northstar" },
+    },
+  ]);
 });
 
 Deno.test("handleIngestRequest - orders parent spans before child spans", async () => {
@@ -725,6 +1004,7 @@ Deno.test("handleIngestRequest - accepts empty arrays", async () => {
     runs: [],
     spans: [],
     events: [],
+    prompt_links: [],
   });
   const supabase = createMockStore({
     resolveApiKeyResult: {
@@ -774,6 +1054,30 @@ Deno.test("handleIngestRequest - handles missing project references as bad paylo
     },
   });
   const res = await handleIngestRequest(req, supabase);
+  assertEquals(res.status, 400);
+  const body = await res.json();
+  assertEquals(body.error, "Payload contains invalid project references");
+});
+
+Deno.test("handleIngestRequest - handles score span mismatch as bad payload", async () => {
+  const req = createAuthRequest({
+    ...createValidPayload(),
+    schema_version: 2,
+    scores: [],
+  });
+  const supabase = createMockStore({
+    resolveApiKeyResult: {
+      data: [{ key_id: "x", project_id: PROJECT_ID }],
+      error: null,
+    },
+    ingestBatchResult: {
+      data: null,
+      error: { message: `span ${SPAN_ID} not found for trace` },
+    },
+  });
+
+  const res = await handleIngestRequest(req, supabase);
+
   assertEquals(res.status, 400);
   const body = await res.json();
   assertEquals(body.error, "Payload contains invalid project references");

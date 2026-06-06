@@ -61,6 +61,12 @@ const VALID_EVENT_TYPES = new Set([
   "custom",
 ]);
 
+const VALID_SCORE_DATA_TYPES = new Set([
+  "numeric",
+  "categorical",
+  "boolean",
+]);
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -156,6 +162,28 @@ const EVENT_KEYS = new Set([
   "created_at",
   "content",
   "attributes",
+]);
+
+const PROMPT_LINK_KEYS = new Set([
+  "project_id",
+  "trace_id",
+  "span_id",
+  "prompt_version_id",
+  "variable_values",
+]);
+
+const SCORE_KEYS = new Set([
+  "id",
+  "project_id",
+  "trace_id",
+  "span_id",
+  "name",
+  "value",
+  "data_type",
+  "string_value",
+  "source",
+  "comment",
+  "created_at",
 ]);
 
 export function validateSessions(sessions: unknown[]): string | null {
@@ -304,6 +332,112 @@ export function validateEvents(events: unknown[]): string | null {
   return null;
 }
 
+export function validatePromptLinks(promptLinks: unknown[]): string | null {
+  for (let i = 0; i < promptLinks.length; i++) {
+    const link = promptLinks[i];
+    if (!isPlainObject(link)) return `prompt_links[${i}] is not an object`;
+    const keysError = validateKeys(
+      link,
+      `prompt_links[${i}]`,
+      PROMPT_LINK_KEYS,
+    );
+    if (keysError) return keysError;
+
+    const projectIdError = validateOptionalProjectId(
+      link.project_id,
+      `prompt_links[${i}].project_id`,
+    );
+    if (projectIdError) return projectIdError;
+
+    if (!isUuid(link.trace_id)) {
+      return `prompt_links[${i}].trace_id is not a valid UUID`;
+    }
+    if (!isUuid(link.span_id)) {
+      return `prompt_links[${i}].span_id is not a valid UUID`;
+    }
+    if (!isUuid(link.prompt_version_id)) {
+      return `prompt_links[${i}].prompt_version_id is not a valid UUID`;
+    }
+    if (
+      link.variable_values != null &&
+      !isPlainObject(link.variable_values)
+    ) {
+      return `prompt_links[${i}].variable_values must be an object`;
+    }
+  }
+  return null;
+}
+
+export function validateScores(scores: unknown[]): string | null {
+  if (scores.length > 500) {
+    return "scores must contain at most 500 items";
+  }
+
+  for (let i = 0; i < scores.length; i++) {
+    const score = scores[i];
+    if (!isPlainObject(score)) return `scores[${i}] is not an object`;
+    const keysError = validateKeys(score, `scores[${i}]`, SCORE_KEYS);
+    if (keysError) return keysError;
+
+    if (!isUuid(score.id)) return `scores[${i}].id is not a valid UUID`;
+    const projectIdError = validateOptionalProjectId(
+      score.project_id,
+      `scores[${i}].project_id`,
+    );
+    if (projectIdError) return projectIdError;
+    if (!isUuid(score.trace_id)) {
+      return `scores[${i}].trace_id is not a valid UUID`;
+    }
+    if (score.span_id != null && !isUuid(score.span_id)) {
+      return `scores[${i}].span_id is not a valid UUID`;
+    }
+    if (typeof score.name !== "string" || score.name.trim().length === 0) {
+      return `scores[${i}].name is required`;
+    }
+    if (
+      typeof score.value !== "number" ||
+      !Number.isFinite(score.value)
+    ) {
+      return `scores[${i}].value must be a finite number`;
+    }
+    if (
+      typeof score.data_type !== "string" ||
+      !VALID_SCORE_DATA_TYPES.has(score.data_type)
+    ) {
+      return `scores[${i}].data_type must be one of: ${
+        [...VALID_SCORE_DATA_TYPES].join(", ")
+      }`;
+    }
+    if (score.data_type === "categorical") {
+      if (
+        typeof score.string_value !== "string" ||
+        score.string_value.trim().length === 0
+      ) {
+        return `scores[${i}].string_value is required for categorical scores`;
+      }
+    } else if (score.string_value != null) {
+      return `scores[${i}].string_value is only allowed for categorical scores`;
+    }
+    if (
+      score.data_type === "boolean" &&
+      score.value !== 0 &&
+      score.value !== 1
+    ) {
+      return `scores[${i}].value must be 0 or 1 for boolean scores`;
+    }
+    if (score.source !== "api") {
+      return `scores[${i}].source must be api`;
+    }
+    if (score.comment != null && typeof score.comment !== "string") {
+      return `scores[${i}].comment must be a string`;
+    }
+    if (!isIsoDate(score.created_at)) {
+      return `scores[${i}].created_at is not a valid ISO timestamp`;
+    }
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Project association
 // ---------------------------------------------------------------------------
@@ -427,7 +561,8 @@ function orderSpansByParent(
 
 function isProjectReferenceError(message: string | undefined): boolean {
   return message?.includes("belongs to a different project") === true ||
-    message?.includes("not found for project") === true;
+    message?.includes("not found for project") === true ||
+    message?.includes("not found for trace") === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,6 +575,8 @@ export type IngestBatch = {
   runs: PersistedRecord[];
   spans: PersistedRecord[];
   events: PersistedRecord[];
+  promptLinks: PersistedRecord[];
+  scores: PersistedRecord[];
 };
 
 export interface IngestStore {
@@ -460,15 +597,27 @@ export function createPostgresIngestStore(
     },
 
     async ingestBatch(batch: IngestBatch): Promise<void> {
-      await sql`
-        SELECT private.ingest_batch(
-          ${batch.projectId}::uuid,
-          ${sql.json(batch.sessions)}::jsonb,
-          ${sql.json(batch.runs)}::jsonb,
-          ${sql.json(batch.spans)}::jsonb,
-          ${sql.json(batch.events)}::jsonb
-        )
-      `;
+      await sql.begin(async (transaction) => {
+        await transaction`
+          SELECT private.ingest_batch_with_prompt_links(
+            ${batch.projectId}::uuid,
+            ${transaction.json(batch.sessions)}::jsonb,
+            ${transaction.json(batch.runs)}::jsonb,
+            ${transaction.json(batch.spans)}::jsonb,
+            ${transaction.json(batch.events)}::jsonb,
+            ${transaction.json(batch.promptLinks)}::jsonb
+          )
+        `;
+
+        if (batch.scores.length > 0) {
+          await transaction`
+            SELECT public.dashboard_bulk_create_scores(
+              ${batch.projectId}::uuid,
+              ${transaction.json(batch.scores)}::jsonb
+            )
+          `;
+        }
+      });
     },
   };
 }
@@ -526,9 +675,9 @@ export async function handleIngestRequest(
   const body = parsedBody;
 
   // 4. Validate schema_version
-  if (body.schema_version !== 1) {
+  if (body.schema_version !== 1 && body.schema_version !== 2) {
     return corsResponse(400, {
-      error: "Unsupported schema_version (expected 1)",
+      error: "Unsupported schema_version (expected 1 or 2)",
     });
   }
 
@@ -537,6 +686,8 @@ export async function handleIngestRequest(
   const rawRuns = body.runs ?? [];
   const rawSpans = body.spans ?? [];
   const rawEvents = body.events ?? [];
+  const rawPromptLinks = body.prompt_links ?? [];
+  const rawScores = body.scores ?? [];
 
   if (!Array.isArray(rawSessions)) {
     return corsResponse(400, { error: "sessions must be an array" });
@@ -549,6 +700,12 @@ export async function handleIngestRequest(
   }
   if (!Array.isArray(rawEvents)) {
     return corsResponse(400, { error: "events must be an array" });
+  }
+  if (!Array.isArray(rawPromptLinks)) {
+    return corsResponse(400, { error: "prompt_links must be an array" });
+  }
+  if (!Array.isArray(rawScores)) {
+    return corsResponse(400, { error: "scores must be an array" });
   }
 
   // 6. Validate each entity type
@@ -563,6 +720,12 @@ export async function handleIngestRequest(
 
   const eventsErr = validateEvents(rawEvents);
   if (eventsErr) return corsResponse(400, { error: eventsErr });
+
+  const promptLinksErr = validatePromptLinks(rawPromptLinks);
+  if (promptLinksErr) return corsResponse(400, { error: promptLinksErr });
+
+  const scoresErr = validateScores(rawScores);
+  if (scoresErr) return corsResponse(400, { error: scoresErr });
 
   // 7. Stamp project_id on every record
   const sessions = stampProjectId(
@@ -581,6 +744,14 @@ export async function handleIngestRequest(
     rawEvents,
     projectId,
   );
+  const promptLinks = stampProjectId(
+    rawPromptLinks,
+    projectId,
+  );
+  const scores = stampProjectId(
+    rawScores,
+    projectId,
+  );
   const orderedSpans = orderSpansByParent(spans);
 
   // 8. Call transactional RPC
@@ -591,6 +762,8 @@ export async function handleIngestRequest(
       runs,
       spans: orderedSpans,
       events,
+      promptLinks,
+      scores,
     });
   } catch (error) {
     console.error("ingest_batch error:", error);

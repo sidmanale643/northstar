@@ -32,6 +32,15 @@ jwt_expiry = 3600
 enable_refresh_token_rotation = true
 enable_manual_linking = false
 
+# Google OAuth. In hosted Supabase, configure the client id/secret in the
+# dashboard. For local `supabase start`, set SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+# and SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET in the local env.
+[auth.external.google]
+enabled = true
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+redirect_uri = ""
+
 [analytics]
 enabled = false
 
