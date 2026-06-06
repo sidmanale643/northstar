@@ -114,7 +114,7 @@ export function PolarisPanel({
           <div className="min-w-0">
             <h2 className="text-[14px] font-semibold text-foreground">{title}</h2>
             <p className="mt-0.5 text-[12px] text-muted-foreground">
-              Polaris answers from this {scope}'s trace, tool, event, token, cost, and error data.
+              Polaris answers from this {scope}&apos;s trace, tool, event, token, cost, and error data.
             </p>
           </div>
         </div>
