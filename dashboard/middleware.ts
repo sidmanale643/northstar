@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
-  if (pathname === '/blog' || pathname.startsWith('/blog/')) {
+  if (pathname === '/' || pathname === '/blog' || pathname.startsWith('/blog/')) {
     return NextResponse.next({ request: { headers: request.headers } })
   }
 
