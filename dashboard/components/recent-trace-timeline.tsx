@@ -74,7 +74,6 @@ export function RecentTraceTimeline({
             placeholder="Search traces…"
             className="h-7 w-[200px] rounded-md border bg-white px-2.5 font-mono text-[12px] outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-emerald-100"
           />
-          <span className="font-mono text-[10px] text-muted-foreground">Client-side filter · server search coming</span>
         </div>
       </div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

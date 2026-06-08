@@ -361,7 +361,7 @@ function AddGraderButton({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-20 mt-1.5 w-80 rounded-md border border-border bg-background p-1 shadow-md">
+        <div className="absolute right-0 top-full z-20 mt-1.5 w-80 rounded-md border border-border bg-background p-1 shadow-md">
           <div className="px-2 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">
             Predefined LLM graders
           </div>
@@ -431,15 +431,21 @@ function EmptyState({
 }) {
   return (
     <div className="rounded-md border border-dashed border-border bg-secondary/30 p-5">
-      <div className="mb-4 flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-[#534AB7]">
-          <Sparkles className="h-5 w-5" />
-        </div>
-        <div>
-          <div className="text-sm font-medium text-foreground">Choose an LLM grader</div>
-          <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Start from a predefined rubric or add a custom grader. Deterministic graders run either way.
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-background text-[#534AB7]">
+            <Sparkles className="h-5 w-5" />
           </div>
+          <div>
+            <div className="text-sm font-medium text-foreground">Choose an LLM grader</div>
+            <div className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              Start from a predefined rubric or add a custom grader. Deterministic graders run either way.
+            </div>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <span className="text-[10.5px] text-muted-foreground">Need a different check?</span>
+          <AddGraderButton onAdd={onAdd} onAddPreset={onAddPreset} disabled={disabled} />
         </div>
       </div>
 
@@ -468,10 +474,6 @@ function EmptyState({
         })}
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
-        <span className="text-[10.5px] text-muted-foreground">Need a different check?</span>
-        <AddGraderButton onAdd={onAdd} onAddPreset={onAddPreset} disabled={disabled} />
-      </div>
     </div>
   )
 }

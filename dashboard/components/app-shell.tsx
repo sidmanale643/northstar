@@ -7,6 +7,7 @@ import {
   BookText,
   Bug,
   Database,
+  ExternalLink,
   FlaskConical,
   FolderKanban,
   Layers3,
@@ -258,6 +259,22 @@ function ProjectWorkspaceShellContent({ project, children }: { project: Project;
                 })}
             </div>
           </nav>
+        </div>
+
+        <div className={cn('shrink-0 border-t border-border/40', collapsed ? 'px-2 py-3' : 'px-2 py-3')}>
+          <a
+            href="https://mintlify.wiki/sidmanale643/northstar"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'flex h-8 items-center gap-2.5 rounded-md text-[12px] font-medium text-muted-foreground transition-all hover:bg-black/5 hover:text-foreground',
+              collapsed ? 'justify-center px-0 mx-0' : 'mx-1 px-3'
+            )}
+            title={collapsed ? 'Docs' : undefined}
+          >
+            <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+            {!collapsed && 'Docs'}
+          </a>
         </div>
 
         <div
